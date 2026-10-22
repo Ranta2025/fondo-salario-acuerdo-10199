@@ -6,7 +6,7 @@ Delivery strategy: ask-on-risk; push of branches is authorized by the user, merg
 Route: delegated direct (external implementer: opencode), parent verifies each task with pytest + diff read.
 
 ## Tasks
-- [ ] T1 Scaffold (pyproject, package, pytest) + domain models, scales, calculation with tests (RED first)
+- [x] T1 Scaffold (pyproject, package, pytest) + domain models, scales, calculation with tests (RED first) — 41 tests pass, ruff clean (RED observed before implementation)
 - [ ] T2 SQLite persistence (.fsal projects, migrations) + tests
 - [ ] T3 Excel export (4 sheets) + tests reading the generated workbook
 - [ ] T4 Importers (workers CSV/XLSX, legacy structure sheet) + tests with synthetic data
