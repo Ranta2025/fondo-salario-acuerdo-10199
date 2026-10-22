@@ -16,6 +16,7 @@ ONE = Decimal(1)
 class Issue:
     code: str
     message: str
+    subject: str = ""
 
 
 @dataclass(frozen=True)
@@ -106,7 +107,13 @@ def calculate(
 ) -> CalculationResult:
     issues: list[Issue] = []
     if settings.weights_sum != ONE:
-        issues.append(Issue("weights_sum", f"weights add up to {settings.weights_sum}, expected 1"))
+        issues.append(
+            Issue(
+                "weights_sum",
+                f"weights add up to {settings.weights_sum}, expected 1",
+                str(settings.weights_sum),
+            )
+        )
 
     # Sheet 1: amount per area.
     area_positions: dict[int, list[PositionResult]] = {a.id: [] for a in areas}
@@ -133,7 +140,7 @@ def calculate(
     for worker in workers:
         problem = _worker_problem(worker, area_ids)
         if problem:
-            issues.append(Issue("invalid_worker", f"{worker.full_name}: {problem}"))
+            issues.append(Issue("invalid_worker", f"{worker.full_name}: {problem}", worker.full_name))
         elif worker.eligible:
             scored[worker.id] = _score_worker(worker, settings)
 
@@ -148,6 +155,7 @@ def calculate(
                 Issue(
                     "undistributed",
                     f"{area_result.area.name}: {area_result.amount} has no eligible worker",
+                    area_result.area.name,
                 )
             )
         for worker, share in zip(members, shares, strict=True):

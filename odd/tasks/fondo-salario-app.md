@@ -8,7 +8,7 @@ Route: inline (user asked the parent to implement everything); each task verifie
 ## Tasks
 - [x] T1 Scaffold (pyproject, package, pytest) + domain models, scales, calculation with tests (RED first) — 41 tests pass, ruff clean (RED observed before implementation)
 - [x] T2 SQLite persistence (.fsal projects, migrations) + tests — 6 tests pass
-- [ ] T3 Excel export (4 sheets) + tests reading the generated workbook
+- [x] T3 Excel export (4 sheets) + tests reading the generated workbook — 7 tests pass (60 total)
 - [x] T4 Importers (workers CSV/XLSX, legacy structure sheet) + tests with synthetic data — 6 tests pass; smoke-tested locally on the legacy sheet (21 areas, 72 positions)
 - [ ] T5 tkinter UI (presenters tested without display) + manual smoke run
 - [ ] T6 README (Spanish user guide), PyInstaller notes, final verification
