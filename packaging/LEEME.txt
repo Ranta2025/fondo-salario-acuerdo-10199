@@ -5,7 +5,7 @@ COMO USAR
 2. Abra la carpeta FondoSalario y haga doble clic en FondoSalario.exe.
 3. Al iniciar, cree un proyecto nuevo o abra uno existente. Guarde el proyecto (.fsal) en Documentos.
 
-Funciona sin internet y no necesita instalar nada.
+Funciona sin internet y no necesita instalar nada. Sirve para Windows de 32 y de 64 bits (Windows 8.1, 10 y 11).
 
 SI WINDOWS BLOQUEA EL PROGRAMA
 - Aviso azul de SmartScreen: pulse "Mas informacion" y luego "Ejecutar de todas formas".
