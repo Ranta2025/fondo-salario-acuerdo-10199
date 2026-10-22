@@ -54,14 +54,20 @@ python -m venv .venv
 .venv/bin/python -m fondo_salario   # o: .venv/bin/python -m fondo_salario ruta/proyecto.fsal
 ```
 
-### Generar un ejecutable de Windows
+### Windows: ejecutable listo (sin instalar Python)
 
-```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed --name FondoSalario src/fondo_salario/__main__.py --paths src
-```
+Cada subida al repositorio compila `FondoSalario.exe` en un Windows real con GitHub Actions
+(`.github/workflows/windows.yml`), tras pasar las pruebas. Para obtenerlo:
 
-El ejecutable queda en `dist/`. Hay que generarlo en Windows para obtener un `.exe`.
+1. Abre la pestaña **Actions** del repositorio y entra en la última ejecución verde.
+2. Descarga el artefacto **FondoSalario-windows** (un `.zip` con `FondoSalario.exe`).
+3. Copia el `.exe` a cualquier carpeta y haz doble clic. No necesita instalación ni internet.
+
+Si Windows muestra el aviso «SmartScreen», pulsa *Más información → Ejecutar de todas formas*
+(el ejecutable no está firmado digitalmente).
+
+Para compilarlo a mano en Windows: `pip install pyinstaller` y
+`pyinstaller --onefile --windowed --name FondoSalario --paths src src/fondo_salario/__main__.py`.
 
 ## Desarrollo
 
