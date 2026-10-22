@@ -27,14 +27,19 @@ jobs:
           ruff check src tests
       - name: Check tkinter is available
         run: python -c "import tkinter; print('tk', tkinter.TkVersion)"
-      - name: Build executable
-        run: pyinstaller --onefile --windowed --name FondoSalario --paths src src/fondo_salario/__main__.py
+      - name: Build application folder
+        run: pyinstaller --onedir --windowed --name FondoSalario --paths src src/fondo_salario/__main__.py
+      - name: Package zip
+        shell: pwsh
+        run: |
+          Copy-Item packaging/LEEME.txt dist/FondoSalario/LEEME.txt
+          Compress-Archive -Path dist/FondoSalario -DestinationPath dist/FondoSalario-windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: FondoSalario-windows
-          path: dist/FondoSalario.exe
+          path: dist/FondoSalario-windows.zip
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/FondoSalario.exe
+          files: dist/FondoSalario-windows.zip

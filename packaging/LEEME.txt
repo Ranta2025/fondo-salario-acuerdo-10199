@@ -1,0 +1,13 @@
+Fondo de salario - Acuerdo 10199/2025
+
+COMO USAR
+1. Extraiga TODA la carpeta del .zip (clic derecho > Extraer todo). No ejecute el programa desde dentro del zip.
+2. Abra la carpeta FondoSalario y haga doble clic en FondoSalario.exe.
+3. Al iniciar, cree un proyecto nuevo o abra uno existente. Guarde el proyecto (.fsal) en Documentos.
+
+Funciona sin internet y no necesita instalar nada.
+
+SI WINDOWS BLOQUEA EL PROGRAMA
+- Aviso azul de SmartScreen: pulse "Mas informacion" y luego "Ejecutar de todas formas".
+- Si el antivirus lo pone en cuarentena: Seguridad de Windows > Proteccion contra virus y amenazas >
+  Historial de proteccion > restaurar y permitir. Es un falso positivo: el programa no esta firmado digitalmente.

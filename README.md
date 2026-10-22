@@ -54,20 +54,19 @@ python -m venv .venv
 .venv/bin/python -m fondo_salario   # o: .venv/bin/python -m fondo_salario ruta/proyecto.fsal
 ```
 
-### Windows: ejecutable listo (sin instalar Python)
+### Windows: programa listo (sin instalar Python)
 
-Cada subida al repositorio compila `FondoSalario.exe` en un Windows real con GitHub Actions
-(`.github/workflows/windows.yml`), tras pasar las pruebas. Para obtenerlo:
+Cada subida al repositorio compila la aplicación en un Windows real con GitHub Actions
+(`.github/workflows/windows.yml`), tras pasar las pruebas, y la empaqueta en `FondoSalario-windows.zip`.
+Se descarga desde la última [release](../../releases/latest) (o desde *Actions → artefacto FondoSalario-windows*).
 
-1. Abre la pestaña **Actions** del repositorio y entra en la última ejecución verde.
-2. Descarga el artefacto **FondoSalario-windows** (un `.zip` con `FondoSalario.exe`).
-3. Copia el `.exe` a cualquier carpeta y haz doble clic. No necesita instalación ni internet.
+1. Extrae **toda** la carpeta del `.zip` (clic derecho → Extraer todo).
+2. Abre la carpeta `FondoSalario` y haz doble clic en `FondoSalario.exe`. No necesita instalación ni internet.
 
-Si Windows muestra el aviso «SmartScreen», pulsa *Más información → Ejecutar de todas formas*
-(el ejecutable no está firmado digitalmente).
-
-Para compilarlo a mano en Windows: `pip install pyinstaller` y
-`pyinstaller --onefile --windowed --name FondoSalario --paths src src/fondo_salario/__main__.py`.
+Se entrega como carpeta y no como un único `.exe` porque los ejecutables de un solo archivo sin firmar son
+borrados con frecuencia por el antivirus. Aun así, al no estar firmado digitalmente, Windows puede mostrar
+SmartScreen (*Más información → Ejecutar de todas formas*); `packaging/LEEME.txt`, incluido en el zip,
+explica qué hacer si el antivirus lo pone en cuarentena.
 
 ## Desarrollo
 
