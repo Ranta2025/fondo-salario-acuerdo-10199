@@ -9,7 +9,7 @@ Route: delegated direct (external implementer: opencode), parent verifies each t
 - [ ] T1 Scaffold (pyproject, package, pytest) + domain models, scales, calculation with tests (RED first)
 - [ ] T2 SQLite persistence (.fsal projects, migrations) + tests
 - [ ] T3 Excel export (4 sheets) + tests reading the generated workbook
-- [ ] T4 Importers (workers CSV/XLSX, legacy structure sheet) + tests with synthetic data
+- [x] T4 Importers (workers CSV/XLSX, legacy structure sheet) + tests with synthetic data — 6 tests pass; smoke-tested locally on the legacy sheet (21 areas, 72 positions)
 - [ ] T5 tkinter UI (presenters tested without display) + manual smoke run
 - [ ] T6 README (Spanish user guide), PyInstaller notes, final verification
 
