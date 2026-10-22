@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -166,11 +167,14 @@ def _read_table(path: Path) -> list[list[object]]:
             return [list(row) for row in workbook.worksheets[0].iter_rows(values_only=True)]
         finally:
             workbook.close()
-    with path.open(newline="", encoding="utf-8-sig") as handle:
-        sample = handle.read(4096)
-        handle.seek(0)
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t") if sample else csv.excel
-        return [list(row) for row in csv.reader(handle, dialect)]
+    raw = path.read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:  # CSV saved by Excel on Windows
+        text = raw.decode("cp1252", errors="replace")
+    sample = text[:4096]
+    dialect = csv.Sniffer().sniff(sample, delimiters=",;\t") if sample else csv.excel
+    return [list(row) for row in csv.reader(io.StringIO(text, newline=""), dialect)]
 
 
 def read_workers(path: str | Path) -> WorkerImportResult:

@@ -90,3 +90,11 @@ def test_legacy_structure_layout(tmp_path):
     )
     assert [p.name for p in areas[0].positions] == ["SubDirector", "Secretaria"]
     assert areas[1].positions[0].approved == 4
+
+
+def test_csv_saved_by_excel_on_windows_cp1252(tmp_path):
+    path = tmp_path / "w.csv"
+    path.write_bytes("Nombre;Área;Antigüedad\nMaría Núñez Prueba;Dirección;5\n".encode("cp1252"))
+    result = read_workers(path)
+    assert result.errors == []
+    assert (result.rows[0].full_name, result.rows[0].area) == ("María Núñez Prueba", "Dirección")
