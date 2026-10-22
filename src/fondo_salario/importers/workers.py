@@ -69,11 +69,7 @@ class WorkerImportResult:
 
 
 def _normalize_header(value: object) -> str:
-    text = (
-        unicodedata.normalize("NFKD", str(value or ""))
-        .encode("ascii", "ignore")
-        .decode()
-    )
+    text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
@@ -167,17 +163,13 @@ def _read_table(path: Path) -> list[list[object]]:
 
         workbook = load_workbook(path, read_only=True, data_only=True)
         try:
-            return [
-                list(row) for row in workbook.worksheets[0].iter_rows(values_only=True)
-            ]
+            return [list(row) for row in workbook.worksheets[0].iter_rows(values_only=True)]
         finally:
             workbook.close()
     with path.open(newline="", encoding="utf-8-sig") as handle:
         sample = handle.read(4096)
         handle.seek(0)
-        dialect = (
-            csv.Sniffer().sniff(sample, delimiters=",;\t") if sample else csv.excel
-        )
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t") if sample else csv.excel
         return [list(row) for row in csv.reader(handle, dialect)]
 
 
@@ -191,9 +183,7 @@ def read_workers(path: str | Path) -> WorkerImportResult:
     columns = _map_headers(table[0])
     missing = [name for name in REQUIRED if name not in columns]
     if missing:
-        result.errors.append(
-            RowError(1, f"missing required columns: {', '.join(missing)}")
-        )
+        result.errors.append(RowError(1, f"missing required columns: {', '.join(missing)}"))
         return result
     for line, raw in enumerate(table[1:], start=2):
         if all(_clean_text(value) == "" for value in raw):
