@@ -32,6 +32,12 @@ class Controller:
         self.project = self._store.load()
         return self.project
 
+    def position(self, position_id: int) -> Position:
+        return next(p for p in self.project.positions if p.id == position_id)
+
+    def worker(self, worker_id: int) -> Worker:
+        return next(w for w in self.project.workers if w.id == worker_id)
+
     def calculation(self) -> CalculationResult:
         p = self.project
         return calculate(p.settings, p.areas, p.positions, p.workers)

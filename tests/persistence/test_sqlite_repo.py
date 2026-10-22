@@ -103,3 +103,12 @@ def test_rejects_file_from_newer_version(tmp_path):
     conn.close()
     with pytest.raises(ValueError, match="newer"):
         ProjectStore(path)
+
+
+def test_backup_copy_is_an_independent_project(store, tmp_path):
+    store.add_area("A")
+    copy = tmp_path / "copy.fsal"
+    store.backup_to(copy)
+    store.add_area("B")
+    with ProjectStore(copy) as other:
+        assert [a.name for a in other.load().areas] == ["A"]

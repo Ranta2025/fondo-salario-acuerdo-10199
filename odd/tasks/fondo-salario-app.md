@@ -10,7 +10,7 @@ Route: inline (user asked the parent to implement everything); each task verifie
 - [x] T2 SQLite persistence (.fsal projects, migrations) + tests — 6 tests pass
 - [x] T3 Excel export (4 sheets) + tests reading the generated workbook — 7 tests pass (60 total)
 - [x] T4 Importers (workers CSV/XLSX, legacy structure sheet) + tests with synthetic data — 6 tests pass; smoke-tested locally on the legacy sheet (21 areas, 72 positions)
-- [ ] T5 tkinter UI (presenters tested without display) + manual smoke run
+- [x] T5 tkinter UI (presenters tested without display) + manual smoke run — controller tests (71 total) + Xvfb smoke run: tabs refresh, totals match, dialogs open
 - [ ] T6 README (Spanish user guide), PyInstaller notes, final verification
 
 ## Acceptance

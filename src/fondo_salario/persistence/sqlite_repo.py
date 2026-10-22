@@ -87,6 +87,14 @@ class ProjectStore:
     def schema_version(self) -> int:
         return self._conn.execute("PRAGMA user_version").fetchone()[0]
 
+    def backup_to(self, path: str | Path) -> None:
+        """Write a consistent copy of the whole project to `path`."""
+        destination = sqlite3.connect(str(path))
+        try:
+            self._conn.backup(destination)
+        finally:
+            destination.close()
+
     def close(self) -> None:
         self._conn.close()
 
