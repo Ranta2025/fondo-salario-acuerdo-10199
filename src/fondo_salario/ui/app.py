@@ -1038,9 +1038,14 @@ class App(tk.Tk):
 
     def on_close(self) -> None:
         if self.confirm_leave():
-            if self.store:
-                self.store.close()
             self.destroy()
+
+    def destroy(self) -> None:
+        # always release the project file (Windows cannot delete or move a file that is still open)
+        if self.store is not None:
+            self.store.close()
+            self.store = None
+        super().destroy()
 
     # -- refresh --------------------------------------------------------------------------
     def changed(self) -> None:
