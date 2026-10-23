@@ -32,7 +32,7 @@ tests/
 
 ## Domain model
 - `Settings`: `total_amount` (real money to distribute), `months_paid` (int >=1), `expected_days_per_month` (24),
-  `weights` {time:0.40, responsibility:0.25, seniority:0.15, contribution:0.20} (must sum to 1.00),
+  `weights` {responsibility:0.25, contribution:0.40, time:0.20, seniority:0.15} (must sum to 1.00; «Rafelito 3»),
   `responsibility_bands`, `seniority_bands`.
 - `Area(id, name, order)`.
 - `Position(id, area_id, name, approved, vacant, temp_vacant, salary, months_unexecuted)`.
@@ -50,10 +50,10 @@ tests/
 
 ## Calculation (sheet 2: amount per worker)
 Each indicator is evaluated 1..5:
-- time: `ratio = days_worked / (expected_days_per_month * months_paid)`; `eval = 0` if days_worked == 0 else `clamp(round_half_up(5*ratio), 1, 5)`.
+- time: `ratio = days_worked / (expected_days_per_month * months_paid)`; `eval = 0` if days_worked == 0 else `clamp(ceil(5*ratio), 1, 5)` (>0-20 % -> 1, >20-40 % -> 2, >40-60 % -> 3, >60-80 % -> 4, >80-100 % -> 5).
 - responsibility: salary group (I..XXV, stored as int 1..25) mapped through `responsibility_bands`.
   Default bands (5 equal): 1-5 -> 1, 6-10 -> 2, 11-15 -> 3, 16-20 -> 4, 21-25 -> 5.
-- seniority: years mapped through `seniority_bands`. Default (5 equal over 1..35): 0-7 -> 1, 8-14 -> 2, 15-21 -> 3, 22-28 -> 4, 29+ -> 5.
+- seniority: years mapped through `seniority_bands`. Default («Rafelito 3»): up to 5 years -> 1, 6-10 -> 2, 11-15 -> 3, 16-20 -> 4, more than 20 -> 5.
 - contribution: entered by the boss, integer 1..5.
 
 `coefficient = sum(weight_i * eval_i)` (Decimal). Non-eligible workers (`eligible=False`) get coefficient 0 and amount 0.

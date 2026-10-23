@@ -90,7 +90,7 @@ def test_reopen_persists_data_and_sets_schema_version(tmp_path):
         s.add_area("A")
     with ProjectStore(path) as s:
         assert [a.name for a in s.load().areas] == ["A"]
-        assert s.schema_version == 2
+        assert s.schema_version == 3
 
 
 def test_rejects_file_from_newer_version(tmp_path):
@@ -151,7 +151,7 @@ def test_migrates_version_1_projects(tmp_path):
     conn.commit()
     conn.close()
     with ProjectStore(path) as s:
-        assert s.schema_version == 2
+        assert s.schema_version == 3
         assert s.load().positions[0].distribute is None
 
 
@@ -188,3 +188,39 @@ def test_backup_includes_pending_changes(tmp_path):
         assert s.dirty is False  # the copy saved the project first
     with ProjectStore(tmp_path / "copy.fsal") as c:
         assert [a.name for a in c.load().areas] == ["pending"]
+
+
+# --- schema v3: settings defaults of the new regulation ----------------------------------
+def _as_version_2(path, weights, seniority_bands):
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "UPDATE settings SET weight_time=?, weight_responsibility=?, weight_seniority=?,"
+        " weight_contribution=?, seniority_bands=?",
+        (*weights, seniority_bands),
+    )
+    conn.execute("PRAGMA user_version = 2")
+    conn.commit()
+    conn.close()
+
+
+def test_v2_projects_with_the_old_defaults_get_the_new_regulation(tmp_path):
+    path = tmp_path / "v2.fsal"
+    ProjectStore(path).close()
+    _as_version_2(path, ("0.40", "0.25", "0.15", "0.20"), "[[0,1],[8,2],[15,3],[22,4],[29,5]]")
+    with ProjectStore(path) as s:
+        st = s.load().settings
+        assert s.schema_version == 3
+        assert (st.weight_time, st.weight_contribution) == (D("0.20"), D("0.40"))
+        assert st.seniority_bands == ((0, 1), (6, 2), (11, 3), (16, 4), (21, 5))
+
+
+def test_v2_projects_with_customized_values_are_left_alone(tmp_path):
+    path = tmp_path / "v2.fsal"
+    ProjectStore(path).close()
+    _as_version_2(path, ("0.50", "0.20", "0.15", "0.15"), "[[0,1],[10,5]]")
+    with ProjectStore(path) as s:
+        st = s.load().settings
+        assert (st.weight_time, st.weight_contribution) == (D("0.50"), D("0.15"))
+        assert st.seniority_bands == ((0, 1), (10, 5))

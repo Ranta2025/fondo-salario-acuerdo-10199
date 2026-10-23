@@ -17,17 +17,17 @@ asamblea de trabajadores). Por eso los pesos y las escalas son configurables.
 
    | Indicador | Peso por defecto | Cómo se evalúa |
    |---|---|---|
-   | Tiempo trabajado | 0.40 | días trabajados ÷ (24 × meses a pagar), llevado a 1–5 (0 si no trabajó) |
-   | Responsabilidad | 0.25 | grupo salarial I–XXV según la escala |
-   | Antigüedad | 0.15 | años en la institución según la escala |
-   | Contribución | 0.20 | nota 1–5 que da el jefe |
+   | Responsabilidad | 0.25 | grupo salarial: I–V = 1, VI–X = 2, XI–XV = 3, XVI–XX = 4, XXI–XXV = 5 |
+   | Contribución | 0.40 | nota que da el jefe: 5 Excepcional, 4 Bueno, 3 Satisfactorio, 2 Regular |
+   | Tiempo laborado | 0.20 | % de días trabajados sobre (24 × meses a pagar): hasta 20 % = 1, 40 % = 2, 60 % = 3, 80 % = 4, más de 80 % = 5 (0 días = sin puntaje) |
+   | Antigüedad | 0.15 | hasta 5 años = 1, 6–10 = 2, 11–15 = 3, 16–20 = 4, más de 20 = 5 |
 
    `coeficiente = Σ peso × evaluación`
 3. **Monto por trabajador.** `coeficiente ÷ suma de coeficientes del área × monto del área`.
    Los redondeos se hacen al centavo con el método del mayor resto, así que **la suma siempre cuadra al centavo**.
 4. **Pre-nómina.** Todos los trabajadores, con 0.00 a los que no les toca.
 
-Los pesos (0.40/0.25/0.15/0.20) y las escalas por defecto son un punto de partida: se editan en la pestaña
+Los pesos (25/40/20/15) y las escalas por defecto siguen el documento «Rafelito 3»: se pueden editar en la pestaña
 **Parámetros**. Verifica que coincidan con el reglamento de tu unidad.
 
 ## Uso

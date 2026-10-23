@@ -124,3 +124,12 @@ def test_results_do_not_claim_balance_when_the_total_is_missing(window):
     window.changed()
     text = window.tabs["4. Resultados"].summary.cget("text")
     assert "Falta" in text and "Cuadra" not in text
+
+
+def test_reset_button_restores_the_regulation_values(window):
+    params = window.tabs["1. Parámetros"]
+    params.vars["w_time"].set("0.50")
+    params.vars["b_sen"].set("0:1, 10:5")
+    params.use_regulation_values()
+    assert params.vars["w_time"].get() == "0.20" and params.vars["w_con"].get() == "0.40"
+    assert params.vars["b_sen"].get() == "0:1, 6:2, 11:3, 16:4, 21:5"

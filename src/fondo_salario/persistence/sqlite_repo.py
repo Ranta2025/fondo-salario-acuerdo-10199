@@ -10,7 +10,16 @@ from pathlib import Path
 
 from fondo_salario.domain.models import Area, Position, Settings, Worker
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+# Defaults before the «Rafelito 3» regulation; projects still using them are upgraded in the v3 migration.
+_OLD_WEIGHTS = {
+    "weight_time": Decimal("0.40"),
+    "weight_responsibility": Decimal("0.25"),
+    "weight_seniority": Decimal("0.15"),
+    "weight_contribution": Decimal("0.20"),
+}
+_OLD_SENIORITY_BANDS = [[0, 1], [8, 2], [15, 3], [22, 4], [29, 5]]
 
 SCHEMA = """
 CREATE TABLE settings (
@@ -79,15 +88,48 @@ class ProjectStore:
         if version > SCHEMA_VERSION:
             self._conn.close()
             raise ValueError("this project was created by a newer version of the application")
-        if version == 1:
-            self._conn.execute("ALTER TABLE positions ADD COLUMN distribute INTEGER")
-            self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            self._conn.commit()
         if version == 0:
             self._conn.executescript(SCHEMA)
             self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             self._write_settings(Settings(total_amount=Decimal("0")))
             self._conn.commit()
+        elif version < SCHEMA_VERSION:
+            self._migrate(version)
+
+    def _migrate(self, version: int) -> None:
+        if version < 2:
+            self._conn.execute("ALTER TABLE positions ADD COLUMN distribute INTEGER")
+        if version < 3:
+            self._upgrade_old_default_settings()
+        self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        self._conn.commit()
+
+    def _upgrade_old_default_settings(self) -> None:
+        """Move settings that still hold the previous defaults to the new regulation's values.
+
+        Weights are replaced together and only if all four are the old defaults; the seniority scale is
+        replaced only if it is the old default. Anything the user customized is left untouched.
+        """
+        row = self._conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
+        if row is None:
+            return
+        defaults = Settings(total_amount=Decimal("0"))
+        if all(Decimal(row[name]) == value for name, value in _OLD_WEIGHTS.items()):
+            self._conn.execute(
+                "UPDATE settings SET weight_time=?, weight_responsibility=?, weight_seniority=?,"
+                " weight_contribution=? WHERE id = 1",
+                (
+                    str(defaults.weight_time),
+                    str(defaults.weight_responsibility),
+                    str(defaults.weight_seniority),
+                    str(defaults.weight_contribution),
+                ),
+            )
+        if json.loads(row["seniority_bands"]) == _OLD_SENIORITY_BANDS:
+            self._conn.execute(
+                "UPDATE settings SET seniority_bands=? WHERE id = 1",
+                (json.dumps(defaults.seniority_bands),),
+            )
 
     # -- lifecycle ---------------------------------------------------------
     @property

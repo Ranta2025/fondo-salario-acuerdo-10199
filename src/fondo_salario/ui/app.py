@@ -184,8 +184,11 @@ class ParametersTab(ttk.Frame):
             self.vars[key].trace_add("write", self._on_edit)
             width = 50 if key.startswith("b_") else 18
             ttk.Entry(form, textvariable=self.vars[key], width=width).grid(row=row, column=1, sticky="w")
+        ttk.Button(
+            self, text="Usar los valores del nuevo reglamento", command=self.use_regulation_values
+        ).pack(anchor="w", pady=(12, 0))
         self.status = ttk.Label(self, text="", style="Big.TLabel")
-        self.status.pack(anchor="w", pady=(14, 0))
+        self.status.pack(anchor="w", pady=(10, 0))
         ttk.Label(
             self,
             text="Los pesos deben sumar 1.00. Las escalas dicen desde qué valor se obtiene cada nota "
@@ -194,6 +197,16 @@ class ParametersTab(ttk.Frame):
             style="Hint.TLabel",
             wraplength=1000,
         ).pack(anchor="w", pady=(6, 0))
+
+    def use_regulation_values(self) -> None:
+        """Put the weights and scales of the current regulation (Rafelito 3) in the form."""
+        d = Settings(total_amount=Decimal(0))
+        self.vars["w_time"].set(str(d.weight_time))
+        self.vars["w_resp"].set(str(d.weight_responsibility))
+        self.vars["w_sen"].set(str(d.weight_seniority))
+        self.vars["w_con"].set(str(d.weight_contribution))
+        self.vars["b_resp"].set(bands_to_text(d.responsibility_bands))
+        self.vars["b_sen"].set(bands_to_text(d.seniority_bands))
 
     def _on_edit(self, *_args) -> None:
         if not self._loading:
