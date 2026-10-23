@@ -115,3 +115,12 @@ def test_selftest_opens_and_closes_the_window(tmp_path):
         pytest.skip("no display available")
     assert app_module.selftest() == 0
     assert app_module.main(["--selftest"]) == 0
+
+
+def test_results_do_not_claim_balance_when_the_total_is_missing(window):
+    area = window.ctl.project.areas[0]
+    window.ctl.add_position(Position(0, area.id, "Jefe", 1, 1, 0, D("100"), 3))
+    window.ctl.add_worker(Worker(0, "Ana Prueba", "1", area.id, 12, 5, 72, 4))
+    window.changed()
+    text = window.tabs["4. Resultados"].summary.cget("text")
+    assert "Falta" in text and "Cuadra" not in text

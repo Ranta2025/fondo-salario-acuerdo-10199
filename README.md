@@ -44,15 +44,51 @@ Los pesos (0.40/0.25/0.15/0.20) y las escalas por defecto son un punto de partid
 Todo se guarda automáticamente en el archivo del proyecto (`.fsal`). Para el próximo período usa
 **Archivo → Guardar una copia** y trabaja sobre la copia.
 
-## Instalación y ejecución
+## Abrirlo y compilarlo en tu PC (Linux)
 
-Requiere Python 3.10 o superior (en Windows, el instalador de python.org ya incluye tkinter).
+Necesitas Python 3.10 o superior **con tkinter**:
+
+| Sistema | Cómo tener tkinter |
+|---|---|
+| Ubuntu / Debian | `sudo apt install python3-tk python3-venv` |
+| Homebrew (Linux/macOS) | `brew install python-tk` |
+| Windows | ya viene con el instalador de python.org |
+
+**1. Preparar el entorno (una sola vez)**
 
 ```bash
-python -m venv .venv
-.venv/bin/pip install -e .          # Windows: .venv\Scripts\pip install -e .
-.venv/bin/python -m fondo_salario   # o: .venv/bin/python -m fondo_salario ruta/proyecto.fsal
+cd fondo-salario-acuerdo-10199
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"        # Windows: .venv\Scripts\pip install -e ".[dev]"
 ```
+
+**2. Abrir el programa** (usa siempre el código actual, sin compilar)
+
+```bash
+.venv/bin/python -m fondo_salario                    # te pregunta si abrir o crear un proyecto
+.venv/bin/python -m fondo_salario mi-proyecto.fsal   # abre directamente un proyecto
+```
+
+**3. Comprobar que todo funciona**
+
+```bash
+.venv/bin/pytest                # 100+ pruebas; las de la ventana se saltan si no hay pantalla
+xvfb-run -a .venv/bin/pytest    # (opcional) con una pantalla virtual, para ejecutarlas todas
+.venv/bin/ruff check src tests
+```
+
+**4. Compilar un ejecutable para Linux** (carpeta `dist/FondoSalario/`)
+
+```bash
+.venv/bin/pip install pyinstaller
+.venv/bin/pyinstaller --onedir --windowed --name FondoSalario --paths src src/fondo_salario/__main__.py
+dist/FondoSalario/FondoSalario                       # ejecutarlo
+dist/FondoSalario/FondoSalario --selftest            # abre y cierra la ventana: comprueba que arranca
+```
+
+> **El `.exe` de Windows no se puede compilar desde Linux.** PyInstaller solo genera ejecutables
+> del sistema donde se ejecuta. Para Windows se compila automáticamente en GitHub (ver abajo) y no hace falta
+> Windows para obtenerlo. Probarlo con Wine/Lutris no es fiable: usa el paso 2, que es lo mismo que el `.exe`.
 
 ### Windows: programa listo (sin instalar Python)
 

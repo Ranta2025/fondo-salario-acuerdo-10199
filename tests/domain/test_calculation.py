@@ -195,3 +195,20 @@ def test_distribute_above_total_vacancies_is_clamped_and_reported():
     result = calculate(settings(), areas, positions, [worker(1, 1)])
     assert result.areas[0].unexecuted == D("12000")
     assert any(i.code == "distribute_exceeds" for i in result.issues)
+
+
+# --- explaining zeros ---------------------------------------------------------------
+def test_missing_total_amount_is_reported(org):
+    areas, positions = org
+    result = calculate(settings(total="0"), areas, positions, [worker(1, 1)])
+    assert any(i.code == "no_total" for i in result.issues)
+
+
+def test_area_with_workers_but_no_money_is_reported_with_the_worker_count(org):
+    areas, positions = org
+    areas = areas + [Area(4, "Sin vacantes", 4)]
+    result = calculate(
+        settings(), areas, positions, [worker(1, 1), worker(8, 4), worker(9, 4, eligible=False)]
+    )
+    issue = next(i for i in result.issues if i.code == "area_without_money")
+    assert (issue.subject, issue.detail) == ("Sin vacantes", "1")  # only eligible workers are counted

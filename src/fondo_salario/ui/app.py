@@ -739,8 +739,13 @@ class ResultsTab(ttk.Frame):
             ("amount", "Monto a cobrar", 160),
         ]
         self.workers = make_tree(self, worker_columns, show="headings", height=6, style="Compact.Treeview")
-        self.issues = tk.Text(self, height=3, wrap="word", state="disabled", background="#fff8e1")
-        self.issues.pack(fill="x", pady=(8, 0))
+        box = ttk.Frame(self)
+        box.pack(fill="x", pady=(8, 0))
+        self.issues = tk.Text(box, height=3, wrap="word", state="disabled", background="#fff8e1")
+        scroll = ttk.Scrollbar(box, orient="vertical", command=self.issues.yview)
+        self.issues.configure(yscrollcommand=scroll.set)
+        self.issues.pack(side="left", fill="x", expand=True)
+        scroll.pack(side="right", fill="y")
 
     def refresh(self) -> None:
         ctl = self.app.ctl
@@ -769,10 +774,15 @@ class ResultsTab(ttk.Frame):
             )
         stripe(self.workers)
         total = ctl.project.settings.total_amount
-        balanced = result.distributed == total
+        balanced = total > 0 and result.distributed == total
+        paid = sum(1 for r in result.workers if r.amount > 0)
+        if total <= 0:
+            verdict = "     ⚠ Falta el monto real a distribuir (Paso 1)"
+        else:
+            verdict = "     ✓ Cuadra" if balanced else "     ⚠ No cuadra"
         self.summary.configure(
             text=f"A distribuir: {money_text(total)}     Repartido: {money_text(result.distributed)}"
-            + ("     ✓ Cuadra" if balanced else "     ⚠ No cuadra"),
+            f"     Cobran: {paid} de {len(result.workers)}" + verdict,
             foreground=COLOR_OK if balanced else COLOR_WARN,
         )
         self.issues.configure(state="normal")

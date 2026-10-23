@@ -138,6 +138,8 @@ def calculate(
     total_unexecuted = sum(area_unexecuted, Decimal(0))
     if total_unexecuted == 0:
         issues.append(Issue("no_unexecuted", "there is no unexecuted salary fund to distribute"))
+    elif settings.total_amount <= 0:
+        issues.append(Issue("no_total", "the real amount to distribute is missing"))
     pcts = allocate(Decimal(100), area_unexecuted)
     amounts = allocate(settings.total_amount, area_unexecuted)
     area_results = [
@@ -170,6 +172,15 @@ def calculate(
                     "undistributed",
                     f"{area_result.area.name}: {area_result.amount} has no eligible worker",
                     area_result.area.name,
+                )
+            )
+        if area_result.amount == 0 and members and settings.total_amount > 0 and total_unexecuted > 0:
+            issues.append(
+                Issue(
+                    "area_without_money",
+                    f"{area_result.area.name}: {len(members)} workers but no money to distribute",
+                    area_result.area.name,
+                    str(len(members)),
                 )
             )
         for worker, share in zip(members, shares, strict=True):

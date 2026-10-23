@@ -6,6 +6,10 @@ from fondo_salario.domain.calculation import Issue
 
 _TEMPLATES = {
     "weights_sum": "Los pesos de los indicadores suman {subject}; deben sumar 1.",
+    "no_total": "Falta escribir el monto real a distribuir (Paso 1: Parámetros); sin él todos cobran 0.00.",
+    "area_without_money": (
+        "Área {subject}: no tiene vacantes a distribuir, por eso sus {detail} trabajadores cobran 0.00."
+    ),
     "no_unexecuted": "No hay fondo de salario no ejecutado para distribuir.",
     "distribute_exceeds": (
         "Cargo {subject}: las vacantes a distribuir superan las que hay; se usan solo las vacantes que hay."
