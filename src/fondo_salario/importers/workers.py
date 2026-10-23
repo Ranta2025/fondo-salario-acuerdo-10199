@@ -55,6 +55,7 @@ class WorkerRow:
     seniority_years: int | None = None
     days_worked: int | None = None
     contribution: int | None = None
+    area_number: int | None = None  # legacy sheet: number in the area header («11 Grupo Ecn.» -> 11)
 
 
 @dataclass
@@ -67,6 +68,7 @@ class RowError:
 class WorkerImportResult:
     rows: list[WorkerRow] = field(default_factory=list)
     errors: list[RowError] = field(default_factory=list)
+    legacy: bool = False  # read from the old per-worker sheet (areas come from its header rows)
 
 
 def _normalize_header(value: object) -> str:
@@ -201,3 +203,84 @@ def read_workers(path: str | Path) -> WorkerImportResult:
             continue
         result.rows.append(row)
     return result
+
+
+# -- legacy "Dist.Monto x Trabajador" sheet ---------------------------------------------
+NUMBERED_HEADER = re.compile(r"^\s*\d+[\s.,\-]")
+AREA_NUMBER_PREFIX = re.compile(r"^\s*\d+\s*[.,\-]*\s*")
+
+
+def normalize_area(name: object) -> str:
+    """Comparable form of an area name: no «3.-» prefix, accents, case or punctuation."""
+    return _normalize_header(AREA_NUMBER_PREFIX.sub("", _clean_text(name)))
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _find_legacy_sheet(workbook):
+    for sheet in workbook.worksheets:
+        key = _normalize_header(sheet.title)
+        if "monto" in key and "trabajador" in key:
+            return sheet
+    return None
+
+
+def read_legacy_workers(path: str | Path) -> WorkerImportResult | None:
+    """Workers from the old per-worker sheet; None when the file has no such sheet.
+
+    Area header rows have no days worked; worker rows carry the days in D:F (total in G), the roman
+    salary group in I, the years in K and the contribution grade in M. Missing values stay None.
+    """
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(Path(path), read_only=True, data_only=True)
+    try:
+        sheet = _find_legacy_sheet(workbook)
+        if sheet is None:
+            return None
+        result = WorkerImportResult(legacy=True)
+        area, area_number = "", None
+        for line, row in enumerate(sheet.iter_rows(min_col=1, max_col=14, values_only=True), start=1):
+            name = _clean_text(row[2])
+            if not name:
+                continue
+            days_parts = [v for v in row[3:6] if _is_number(v)]
+            total = row[6] if _is_number(row[6]) and row[6] > 0 else sum(days_parts)
+            if total <= 0:
+                # only numbered headers start a new area; unnumbered ones are sub-groups of the current one
+                if "monto" not in name.lower() and NUMBERED_HEADER.match(name):
+                    area = AREA_NUMBER_PREFIX.sub("", name).strip()
+                    area_number = int(re.match(r"\s*(\d+)", name).group(1))
+                continue
+            if name.startswith("#"):
+                result.errors.append(RowError(line, "the worker name is a broken reference (#REF!)"))
+                continue
+            group = parse_roman(_clean_text(row[8])) if _clean_text(row[8]) else None
+            years = int(row[10]) if _is_number(row[10]) and row[10] >= 0 else None
+            contribution = int(row[12]) if _is_number(row[12]) and 1 <= row[12] <= 5 else None
+            result.rows.append(
+                WorkerRow(
+                    full_name=name,
+                    national_id="",
+                    area=area,
+                    salary_group=group if group and 1 <= group <= 25 else None,
+                    seniority_years=years,
+                    days_worked=int(total),
+                    contribution=contribution,
+                    area_number=area_number,
+                )
+            )
+        return result
+    finally:
+        workbook.close()
+
+
+def read_workers_auto(path: str | Path) -> WorkerImportResult:
+    """Legacy per-worker sheet when the workbook has one, otherwise a plain CSV/XLSX table."""
+    if Path(path).suffix.lower() in {".xlsx", ".xlsm"}:
+        legacy = read_legacy_workers(path)
+        if legacy is not None:
+            return legacy
+    return read_workers(path)

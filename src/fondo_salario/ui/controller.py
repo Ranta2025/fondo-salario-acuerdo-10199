@@ -10,7 +10,7 @@ from fondo_salario.domain.calculation import CalculationResult, calculate
 from fondo_salario.domain.models import Area, Position, Settings, Worker
 from fondo_salario.export.excel_report import export_report
 from fondo_salario.importers.structure import AreaRow
-from fondo_salario.importers.workers import WorkerRow, _normalize_header
+from fondo_salario.importers.workers import WorkerRow, _normalize_header, normalize_area
 from fondo_salario.persistence.sqlite_repo import Project, ProjectStore
 
 DEFAULT_CONTRIBUTION = 3
@@ -20,6 +20,8 @@ DEFAULT_CONTRIBUTION = 3
 class WorkerImportSummary:
     added: int = 0
     defaults_used: int = 0
+    undefined: int = 0  # imported without salary group or seniority; they must be completed by hand
+    areas_created: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
 
 
@@ -114,17 +116,37 @@ class Controller:
         self.refresh()
         return added
 
-    def import_workers(self, rows: list[WorkerRow]) -> WorkerImportSummary:
-        by_name = {_normalize_header(a.name): a for a in self.project.areas}
+    def import_workers(
+        self,
+        rows: list[WorkerRow],
+        create_missing_areas: bool = False,
+        allow_undefined: bool = False,
+    ) -> WorkerImportSummary:
+        """Add workers. Areas match ignoring number prefixes («3.- Dir» = «Dir»), accents and case.
+
+        With `allow_undefined`, a missing salary group or seniority is stored as 0 («sin definir»): the
+        calculation then reports the worker and pays 0.00 until the data is completed.
+        """
+        by_name = {normalize_area(a.name): a for a in self.project.areas}
         settings = self.project.settings
         full_period = settings.expected_days_per_month * settings.months_paid
+        known = [(_normalize_header(w.full_name), w.national_id.strip()) for w in self.project.workers]
         summary = WorkerImportSummary()
         for row in rows:
-            area = by_name.get(_normalize_header(row.area))
+            key = (_normalize_header(row.full_name), row.national_id.strip())
+            if _is_duplicate(key, known):
+                summary.skipped.append(f"{row.full_name}: ya existe")
+                continue
+            area = _find_area(row, by_name, self.project.areas)
+            if area is None and create_missing_areas and row.area.strip():
+                area = self._store.add_area(row.area.strip())
+                by_name[normalize_area(row.area)] = area
+                summary.areas_created.append(area.name)
             if area is None:
                 summary.skipped.append(f"{row.full_name}: área desconocida «{row.area}»")
                 continue
-            if row.salary_group is None or row.seniority_years is None:
+            incomplete = row.salary_group is None or row.seniority_years is None
+            if incomplete and not allow_undefined:
                 summary.skipped.append(f"{row.full_name}: falta el grupo salarial o la antigüedad")
                 continue
             defaulted = row.days_worked is None or row.contribution is None
@@ -135,20 +157,41 @@ class Controller:
                     national_id=row.national_id,
                     area_id=area.id,
                     position_name=row.position,
-                    salary_group=row.salary_group,
-                    seniority_years=row.seniority_years,
+                    salary_group=row.salary_group or 0,
+                    seniority_years=row.seniority_years or 0,
                     days_worked=full_period if row.days_worked is None else row.days_worked,
                     contribution=DEFAULT_CONTRIBUTION if row.contribution is None else row.contribution,
                 )
             )
+            known.append(key)
             summary.added += 1
             summary.defaults_used += int(defaulted)
+            summary.undefined += int(incomplete)
         self.refresh()
         return summary
 
     # -- export -------------------------------------------------------------------------
     def export(self, path: str | Path) -> None:
         export_report(path, self.project.settings, self.calculation())
+
+
+def _find_area(row: WorkerRow, by_name: dict[str, Area], ordered: list[Area]) -> Area | None:
+    """Exact name, then one name contained in the other, then the legacy area number."""
+    key = normalize_area(row.area)
+    if key in by_name:
+        return by_name[key]
+    contained = [a for k, a in by_name.items() if len(min(k, key, key=len)) >= 5 and (k in key or key in k)]
+    if len(contained) == 1:
+        return contained[0]
+    if row.area_number and 1 <= row.area_number <= len(ordered):
+        return ordered[row.area_number - 1]
+    return None
+
+
+def _is_duplicate(key: tuple[str, str], known: list[tuple[str, str]]) -> bool:
+    """Same normalized name and the same ID number (or one of the two has no ID yet)."""
+    name, national_id = key
+    return any(n == name and (not i or not national_id or i == national_id) for n, i in known)
 
 
 def parse_money(text: str) -> Decimal:

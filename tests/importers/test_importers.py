@@ -98,3 +98,85 @@ def test_csv_saved_by_excel_on_windows_cp1252(tmp_path):
     result = read_workers(path)
     assert result.errors == []
     assert (result.rows[0].full_name, result.rows[0].area) == ("María Núñez Prueba", "Dirección")
+
+
+# --- legacy "Dist.Monto x Trabajador" sheet ------------------------------------------
+def _legacy_workers_workbook(tmp_path):
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    wb.active.title = "Relacion de Areas"
+    ws = wb.create_sheet("Dist.Monto x Trabajador")
+    ws["D2"], ws["I2"] = "1.- Tiempo Trabajado", "2.- Responsabilidad"
+    ws["C4"], ws["O4"] = "Monto Total a Distribuir", 1000
+    #       A  B  C                                D   E   F   G   H  I      J  K   L  M
+    ws.append([])
+    rows = [
+        ("x", None, "3.- Departamento de Control", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (None, None, "Nidia Prueba Uno", 24, 24, 24, 72, 5, "XII", 3, 21, 5, 3),
+        (None, None, None, None, None, None, None, None, None, "Coeficiente del Grupo", None, None, None),
+        (
+            None,
+            None,
+            "4. Desarrollo Habitacional",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+        (None, None, "Sin Grupo Prueba", 24, 24, 24, 72, 5, None, 4, None, 4, 9),
+        (None, None, "#REF!", 24, 24, 24, 72, 5, None, 4, 3, 4, 4),
+        (None, None, "Banco de los Colonos", None, None, None, None, None, None, None, None, None, None),
+        (None, None, "Maria Prueba Dos ", 24, 24, 12, None, 5, "XX", 4, 0, 5, 4),
+    ]
+    for row in rows:
+        ws.append(list(row))
+    path = tmp_path / "legacy.xlsx"
+    wb.save(path)
+    return path
+
+
+def test_legacy_workers_sheet(tmp_path):
+    from fondo_salario.importers.workers import read_legacy_workers
+
+    result = read_legacy_workers(_legacy_workers_workbook(tmp_path))
+    by_name = {r.full_name: r for r in result.rows}
+    assert list(by_name) == ["Nidia Prueba Uno", "Sin Grupo Prueba", "Maria Prueba Dos"]
+    nidia = by_name["Nidia Prueba Uno"]
+    assert (nidia.area, nidia.salary_group, nidia.seniority_years, nidia.days_worked, nidia.contribution) == (
+        "Departamento de Control",
+        12,
+        21,
+        72,
+        3,
+    )
+    sin = by_name["Sin Grupo Prueba"]
+    assert (sin.area, sin.salary_group, sin.seniority_years, sin.contribution) == (
+        "Desarrollo Habitacional",
+        None,
+        None,
+        None,
+    )
+    maria = by_name["Maria Prueba Dos"]
+    assert (maria.area, maria.days_worked, maria.salary_group) == (
+        "Desarrollo Habitacional",
+        60,
+        20,
+    )  # unnumbered header = sub-group
+    assert (nidia.area_number, sin.area_number) == (3, 4)
+    assert len(result.errors) == 1 and "#REF" in result.errors[0].message
+
+
+def test_read_workers_auto_detects_legacy_sheet(tmp_path):
+    from fondo_salario.importers.workers import read_workers_auto
+
+    assert len(read_workers_auto(_legacy_workers_workbook(tmp_path)).rows) == 3
+    csv = tmp_path / "w.csv"
+    csv.write_text("nombre,area\nA,X\n", encoding="utf-8")
+    assert len(read_workers_auto(csv).rows) == 1

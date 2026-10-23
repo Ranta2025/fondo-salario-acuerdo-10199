@@ -10,13 +10,25 @@ _TEMPLATES = {
     "distribute_exceeds": (
         "Cargo {subject}: las vacantes a distribuir superan las que hay; se usan solo las vacantes que hay."
     ),
-    "invalid_worker": "Datos no válidos en el trabajador {subject}; se le asigna 0.00.",
+    "invalid_worker": (
+        "Datos no válidos en el trabajador {subject}: {detail}; se le asigna 0.00 hasta corregirlo."
+    ),
     "undistributed": (
         "Área {subject}: tiene monto asignado pero ningún trabajador elegible; ese dinero queda sin repartir."
     ),
 }
 
 
+_DETAILS = {
+    "unknown_area": "no tiene un área válida",
+    "salary_group": "falta el grupo salarial",
+    "negative": "tiene valores negativos",
+    "contribution": "la contribución debe estar entre 1 y 5",
+}
+
+
 def describe(issue: Issue) -> str:
     template = _TEMPLATES.get(issue.code)
-    return template.format(subject=issue.subject) if template else issue.message
+    if template is None:
+        return issue.message
+    return template.format(subject=issue.subject, detail=_DETAILS.get(issue.detail, "revise sus datos"))

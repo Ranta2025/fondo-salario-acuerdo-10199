@@ -12,7 +12,7 @@ from tkinter import font as tkfont
 from fondo_salario.domain.models import Position, Settings, Worker
 from fondo_salario.export.excel_report import to_roman
 from fondo_salario.importers.structure import read_structure
-from fondo_salario.importers.workers import parse_roman, read_workers
+from fondo_salario.importers.workers import parse_roman, read_workers_auto
 from fondo_salario.messages import describe
 from fondo_salario.persistence.sqlite_repo import AreaInUseError, ProjectStore
 from fondo_salario.ui.controller import Controller, parse_money, resolve_distribute
@@ -678,13 +678,22 @@ class WorkersTab(ttk.Frame):
         if not path:
             return
         try:
-            read = read_workers(path)
+            read = read_workers_auto(path)
         except Exception as error:  # unreadable file
             messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
             return
-        summary = self.app.ctl.import_workers(read.rows)
+        summary = self.app.ctl.import_workers(
+            read.rows, create_missing_areas=read.legacy, allow_undefined=read.legacy
+        )
         problems = [f"Fila {e.line}: {e.message}" for e in read.errors] + summary.skipped
         text = f"Trabajadores importados: {summary.added}."
+        if summary.areas_created:
+            text += f"\nÁreas nuevas creadas: {len(summary.areas_created)}."
+        if summary.undefined:
+            text += (
+                f"\n{summary.undefined} trabajadores no tienen grupo salarial o antigüedad en el archivo: "
+                "aparecen con «—» y no cobrarán hasta que los complete (haga doble clic en cada uno)."
+            )
         if summary.defaults_used:
             text += (
                 f"\n{summary.defaults_used} usaron valores por defecto "

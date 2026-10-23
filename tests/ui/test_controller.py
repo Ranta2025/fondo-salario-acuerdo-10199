@@ -112,3 +112,50 @@ def test_controller_tracks_unsaved_changes(tmp_path):
         c.add_area("Eco")
         c.discard()
         assert [a.name for a in c.project.areas] == ["Dir"] and c.dirty is False
+
+
+def test_import_legacy_creates_missing_areas_and_keeps_undefined_group(ctl):
+    ctl.import_structure([AreaRow(1, "Desarrollo Habitacional")])
+    rows = [
+        row(name="Ana Uno", area="Desarrollo Habitacional", salary_group=None, seniority_years=None),
+        row(name="Beto Dos", area="Banco de los Colonos", salary_group=12),
+    ]
+    summary = ctl.import_workers(rows, create_missing_areas=True, allow_undefined=True)
+    assert summary.added == 2 and summary.areas_created == ["Banco de los Colonos"]
+    assert summary.undefined == 1
+    ana = next(w for w in ctl.project.workers if w.full_name == "Ana Uno")
+    assert ana.salary_group == 0 and ana.seniority_years == 0
+    # the calculation reports the incomplete worker instead of paying wrongly
+    assert any(i.code == "invalid_worker" for i in ctl.calculation().issues)
+
+
+def test_import_matches_numbered_area_names_and_skips_duplicates(ctl):
+    ctl.import_structure([AreaRow(1, "Desarrollo Habitacional")])
+    first = ctl.import_workers([row(name="Ana Uno", area="4. Desarrollo Habitacional")])
+    assert first.added == 1
+    again = ctl.import_workers([row(name="ana  uno", area="Desarrollo Habitacional")])
+    assert again.added == 0 and "ya existe" in again.skipped[0]
+
+
+def test_import_matches_areas_by_containment_and_legacy_number(ctl):
+    ctl.import_structure(
+        [
+            AreaRow(1, "Direccion"),
+            AreaRow(2, "Grupo de Subsidios"),
+            AreaRow(3, "G. Atencion C/T"),
+            AreaRow(4, "Dpto. Administrativo"),
+        ]
+    )
+    rows = [
+        row(name="Uno", area="Grupo de Subsidios y Esfuerzos p.", area_number=2),
+        row(name="Dos", area="Atencion C/T", area_number=3),
+        row(name="Tres", area="Grupo Ecn.", area_number=4),
+    ]
+    summary = ctl.import_workers(rows, create_missing_areas=True)
+    assert summary.areas_created == [] and summary.added == 3
+    names = {a.id: a.name for a in ctl.project.areas}
+    assert [names[w.area_id] for w in ctl.project.workers] == [
+        "Grupo de Subsidios",
+        "G. Atencion C/T",
+        "Dpto. Administrativo",
+    ]

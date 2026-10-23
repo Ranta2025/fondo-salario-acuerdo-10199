@@ -17,6 +17,7 @@ class Issue:
     code: str
     message: str
     subject: str = ""
+    detail: str = ""
 
 
 @dataclass(frozen=True)
@@ -74,15 +75,16 @@ def allocate(total: Decimal, weights: list[Decimal]) -> list[Decimal]:
     return parts
 
 
-def _worker_problem(worker: Worker, area_ids: set[int]) -> str | None:
+def _worker_problem(worker: Worker, area_ids: set[int]) -> tuple[str, str] | None:
+    """(machine code, English description) of what is wrong with the worker's data, if anything."""
     if worker.area_id not in area_ids:
-        return "unknown area"
+        return "unknown_area", "unknown area"
     if not 1 <= worker.salary_group <= 25:
-        return "salary group must be between 1 and 25"
+        return "salary_group", "salary group must be between 1 and 25"
     if worker.seniority_years < 0 or worker.days_worked < 0:
-        return "seniority and days worked cannot be negative"
+        return "negative", "seniority and days worked cannot be negative"
     if not 1 <= worker.contribution <= 5:
-        return "contribution must be between 1 and 5"
+        return "contribution", "contribution must be between 1 and 5"
     return None
 
 
@@ -149,7 +151,10 @@ def calculate(
     for worker in workers:
         problem = _worker_problem(worker, area_ids)
         if problem:
-            issues.append(Issue("invalid_worker", f"{worker.full_name}: {problem}", worker.full_name))
+            code, description = problem
+            issues.append(
+                Issue("invalid_worker", f"{worker.full_name}: {description}", worker.full_name, code)
+            )
         elif worker.eligible:
             scored[worker.id] = _score_worker(worker, settings)
 

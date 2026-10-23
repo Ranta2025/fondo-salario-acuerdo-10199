@@ -18,7 +18,7 @@ Users are elderly: big fonts/buttons, simple flow. Local test env: `.venv` + Xvf
 - [x] T7 "Vacantes a distribuir" per position (None = all vacancies) in domain, SQLite v2 migration, Excel, UI form; fix legacy structure import (column D = vacancies used for the amount, was imported as approved with 0 vacancies -> nothing distributed) — 84 tests pass; real legacy file now yields unexecuted 320,220, percentages sum 100
 - [x] T8 Explicit save model: changes pending until Guardar; ask to save on close; unsaved indicator — store autosave=False + save/discard, close prompt, unsaved indicator; window tests under Xvfb (96 tests)
 - [x] T9 UI redesign for elderly users: larger fonts, visible toolbar (Nuevo/Abrir/Guardar/Exportar) while keeping the Archivo menu, work-oriented layout, status bar — verified with Xvfb screenshots at 1366x680
-- [ ] T10 Import workers from the legacy "Dist.Monto x Trabajador" sheet (name, area, years, days, contribution, roman group when present); undefined group imported as 0 and flagged
+- [x] T10 Import workers from the legacy "Dist.Monto x Trabajador" sheet (name, area, years, days, contribution, roman group when present); undefined group imported as 0 and flagged — 101 tests; on the real legacy file: 36 workers read (5 broken #REF! names reported), areas matched by name/containment/number, 12 incomplete flagged
 - [ ] T11 Release the new Windows build (needs user OK for the tag)
 
 ## Acceptance
