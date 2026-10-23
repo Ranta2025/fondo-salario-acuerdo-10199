@@ -19,7 +19,7 @@ Users are elderly: big fonts/buttons, simple flow. Local test env: `.venv` + Xvf
 - [x] T8 Explicit save model: changes pending until Guardar; ask to save on close; unsaved indicator — store autosave=False + save/discard, close prompt, unsaved indicator; window tests under Xvfb (96 tests)
 - [x] T9 UI redesign for elderly users: larger fonts, visible toolbar (Nuevo/Abrir/Guardar/Exportar) while keeping the Archivo menu, work-oriented layout, status bar — verified with Xvfb screenshots at 1366x680
 - [x] T10 Import workers from the legacy "Dist.Monto x Trabajador" sheet (name, area, years, days, contribution, roman group when present); undefined group imported as 0 and flagged — 101 tests; on the real legacy file: 36 workers read (5 broken #REF! names reported), areas matched by name/containment/number, 12 incomplete flagged
-- [ ] T11 Release the new Windows build (needs user OK for the tag)
+- [ ] T11 Release the new Windows build (needs user OK for the tag) — build 322779e passed on windows-latest incl. packaged-exe self-test; waiting for user to approve the release tag
 
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
