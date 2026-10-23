@@ -15,10 +15,11 @@ class Settings:
     total_amount: Decimal
     months_paid: int = 3
     expected_days_per_month: int = 24
-    weight_time: Decimal = Decimal("0.40")
+    # Rafelito 3: responsibility 25 %, contribution 40 %, time worked 20 %, seniority 15 %
+    weight_time: Decimal = Decimal("0.20")
     weight_responsibility: Decimal = Decimal("0.25")
     weight_seniority: Decimal = Decimal("0.15")
-    weight_contribution: Decimal = Decimal("0.20")
+    weight_contribution: Decimal = Decimal("0.40")
     responsibility_bands: Bands = DEFAULT_RESPONSIBILITY_BANDS
     seniority_bands: Bands = DEFAULT_SENIORITY_BANDS
 

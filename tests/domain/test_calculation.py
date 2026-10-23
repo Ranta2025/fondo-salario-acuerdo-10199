@@ -54,15 +54,53 @@ def test_responsibility_bands_edges(group, score):
 
 @pytest.mark.parametrize(
     "years,score",
-    [(0, 1), (7, 1), (8, 2), (14, 2), (15, 3), (21, 3), (22, 4), (28, 4), (29, 5), (50, 5)],
+    # Rafelito 3: up to 5 years 1, 6-10 2, 11-15 3, 16-20 4, more than 20 5
+    [(0, 1), (5, 1), (6, 2), (10, 2), (11, 3), (15, 3), (16, 4), (20, 4), (21, 5), (50, 5)],
 )
 def test_seniority_bands_edges(years, score):
     assert band_score(years, DEFAULT_SENIORITY_BANDS) == score
 
 
-@pytest.mark.parametrize("days,score", [(0, 0), (1, 1), (72, 5), (60, 4), (36, 3), (14, 1), (200, 5)])
-def test_time_score(days, score):
+@pytest.mark.parametrize(
+    "days,score",
+    # 3 months = 72 potential days; ranges are >0-20 %, >20-40 %, >40-60 %, >60-80 %, >80-100 %
+    [
+        (0, 0),
+        (1, 1),
+        (14, 1),
+        (15, 2),
+        (28, 2),
+        (29, 3),
+        (43, 3),
+        (44, 4),
+        (57, 4),
+        (58, 5),
+        (72, 5),
+        (200, 5),
+    ],
+)
+def test_time_score_uses_percentage_ranges(days, score):
     assert time_score(days, expected_days=24, months=3) == score
+
+
+@pytest.mark.parametrize(
+    "days,score",
+    # one month = 24 days: 1-4, 5-9, 10-14, 15-19, 20-24 (the document's «corregido» table)
+    [(1, 1), (4, 1), (5, 2), (9, 2), (10, 3), (14, 3), (15, 4), (19, 4), (20, 5), (24, 5)],
+)
+def test_time_score_matches_the_monthly_table_of_the_document(days, score):
+    assert time_score(days, expected_days=24, months=1) == score
+
+
+def test_default_weights_are_the_ones_of_the_new_regulation():
+    s = Settings(total_amount=D("1"))
+    assert (s.weight_responsibility, s.weight_contribution, s.weight_time, s.weight_seniority) == (
+        D("0.25"),
+        D("0.40"),
+        D("0.20"),
+        D("0.15"),
+    )
+    assert s.weights_sum == D("1.00")
 
 
 # --- allocate ---------------------------------------------------------------
@@ -111,9 +149,9 @@ def test_coefficient_uses_weights(org):
     w = worker(1, 1, salary_group=12, seniority_years=10, days_worked=72, contribution=4)
     result = calculate(settings(), areas, positions, [w])
     # time 5, responsibility 3, seniority 2, contribution 4
-    assert result.workers[0].coefficient == D("5") * D("0.40") + D("3") * D("0.25") + D("2") * D("0.15") + D(
-        "4"
-    ) * D("0.20")
+    assert result.workers[0].coefficient == (
+        D("5") * D("0.20") + D("3") * D("0.25") + D("2") * D("0.15") + D("4") * D("0.40")
+    )
 
 
 def test_ineligible_worker_gets_zero_and_others_share(org):
@@ -212,3 +250,28 @@ def test_area_with_workers_but_no_money_is_reported_with_the_worker_count(org):
     )
     issue = next(i for i in result.issues if i.code == "area_without_money")
     assert (issue.subject, issue.detail) == ("Sin vacantes", "1")  # only eligible workers are counted
+
+
+def test_monthly_example_of_the_document():
+    """Rafelito 3, «Ejemplo mensual»: fund 8,000 among five workers of one area; total of points 15.50."""
+    areas = [Area(1, "A", 1)]
+    positions = [Position(1, 1, "p", 1, 1, 0, D("1000"), 1)]
+    #  group, contribution, days (of 24), years   -> expected final score
+    people = [
+        (18, 5, 24, 12, "4.45"),  # A: resp 4, contr 5, time 5, antig 3
+        (9, 4, 24, 8, "3.40"),  # B: resp 2, contr 4, time 5, antig 2
+        (13, 4, 17, 12, "3.60"),  # C: resp 3, contr 4, time 4, antig 3
+        (4, 3, 12, 3, "2.20"),  # D: resp 1, contr 3, time 3, antig 1
+        (8, 2, 7, 3, "1.85"),  # E: resp 2, contr 2, time 2, antig 1
+    ]
+    workers = [
+        worker(i, 1, salary_group=g, contribution=c, days_worked=d, seniority_years=y)
+        for i, (g, c, d, y, _) in enumerate(people, start=1)
+    ]
+    result = calculate(settings(total="8000.00", months=1), areas, positions, workers)
+    assert [r.coefficient for r in result.workers] == [D(p[4]) for p in people]
+    assert result.workers[0].area_coefficient == D("15.50")
+    document_amounts = ["2296.78", "1754.84", "1858.07", "1135.49", "954.84"]
+    for got, expected in zip(result.workers, document_amounts, strict=True):
+        assert abs(got.amount - D(expected)) <= D("0.01")  # the document rounds the point value first
+    assert sum(r.amount for r in result.workers) == D("8000.00")

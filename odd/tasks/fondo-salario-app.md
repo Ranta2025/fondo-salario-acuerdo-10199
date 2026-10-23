@@ -21,6 +21,15 @@ Users are elderly: big fonts/buttons, simple flow. Local test env: `.venv` + Xvf
 - [x] T10 Import workers from the legacy "Dist.Monto x Trabajador" sheet (name, area, years, days, contribution, roman group when present); undefined group imported as 0 and flagged — 101 tests; on the real legacy file: 36 workers read (5 broken #REF! names reported), areas matched by name/containment/number, 12 incomplete flagged
 - [ ] T11 Release the new Windows build (needs user OK for the tag) — build 322779e passed on windows-latest incl. packaged-exe self-test; waiting for user to approve the release tag
 
+## Iteration 3 (user's «Rafelito 3.docx»: new specification)
+Source: weights 25/40/20/15 (resp/contrib/time/seniority); time = % of days worked over months*24 in 5 ranges
+(ceil(5*ratio), 0 days -> no score); seniority <=5:1, 6-10:2, 11-15:3, 16-20:4, >20:5; contribution 5 Excepcional,
+4 Bueno, 3 Satisfactorio, 2 Regular (1 not described); worker's right to collect must be identifiable (only those who
+cover the vacant position's tasks); area amount -> workers by coef / sum of area coefs. Doc examples used as tests.
+- [x] T12 New defaults (weights, seniority bands), time-score rule by % ranges; tests from the document's monthly example — 122 tests; document monthly example reproduced (15.50 points, 8,000 distributed)
+- [ ] T13 Schema v3: old default settings upgrade to the new ones; «restablecer» button; docs (SPEC, README) updated
+- [ ] T14 «Derecho a cobro»: clear column/filter/bulk toggle in Trabajadores, column in the Excel report, contribution labels
+
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
 - Pre-nomina lists every worker, 0.00 for non-paid.

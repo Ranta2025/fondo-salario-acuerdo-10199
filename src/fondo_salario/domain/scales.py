@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, Decimal
 
 # (lower bound inclusive, score); the highest bound <= value wins.
 Bands = tuple[tuple[int, int], ...]
 
 DEFAULT_RESPONSIBILITY_BANDS: Bands = ((1, 1), (6, 2), (11, 3), (16, 4), (21, 5))
-DEFAULT_SENIORITY_BANDS: Bands = ((0, 1), (8, 2), (15, 3), (22, 4), (29, 5))
+# Rafelito 3: up to 5 years 1 point, 6-10 -> 2, 11-15 -> 3, 16-20 -> 4, more than 20 -> 5
+DEFAULT_SENIORITY_BANDS: Bands = ((0, 1), (6, 2), (11, 3), (16, 4), (21, 5))
 
 MAX_SCORE = 5
 
@@ -22,9 +23,12 @@ def band_score(value: int, bands: Bands) -> int:
 
 
 def time_score(days_worked: int, expected_days: int, months: int) -> int:
-    """0 when nothing was worked, otherwise the worked ratio scaled to 1..5."""
+    """Score 1..5 from the share of potential days worked; 0 when nothing was worked.
+
+    Ranges (Rafelito 3): more than 0-20 % -> 1, >20-40 % -> 2, >40-60 % -> 3, >60-80 % -> 4, >80-100 % -> 5.
+    """
     if days_worked <= 0:
         return 0
-    ratio = Decimal(days_worked) / Decimal(expected_days * months)
-    scaled = (ratio * MAX_SCORE).quantize(Decimal(1), rounding=ROUND_HALF_UP)
-    return int(min(max(scaled, 1), MAX_SCORE))
+    potential = expected_days * months
+    score = (Decimal(MAX_SCORE * days_worked) / Decimal(potential)).to_integral_value(rounding=ROUND_CEILING)
+    return int(min(max(score, 1), MAX_SCORE))
