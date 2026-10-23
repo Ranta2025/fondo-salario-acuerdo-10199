@@ -54,6 +54,25 @@ Necesitas Python 3.10 o superior **con tkinter**:
 | Homebrew (Linux/macOS) | `brew install python-tk` |
 | Windows | ya viene con el instalador de python.org |
 
+### Abrir el programa (lo más rápido)
+
+```bash
+./abrir.sh                     # la primera vez crea el entorno e instala; después abre directo
+./abrir.sh mi-proyecto.fsal    # abre directamente un proyecto guardado
+./probar.sh                    # (opcional) pruebas + análisis de código
+```
+
+Si todavía no tienes la carpeta:
+
+```bash
+git clone https://github.com/Ranta2025/fondo-salario-acuerdo-10199.git
+cd fondo-salario-acuerdo-10199
+git switch feat/fondo-salario-app    # el código vive en esta rama hasta que se fusione en main
+./abrir.sh
+```
+
+Si algo falla, el script te dice qué falta (por ejemplo tkinter). Lo de abajo explica lo mismo paso a paso.
+
 **1. Preparar el entorno (una sola vez)**
 
 ```bash
