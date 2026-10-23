@@ -105,3 +105,13 @@ def test_results_tab_balances_with_vacancies_to_distribute(window):
         window.tabs["2. Áreas y cargos"].tree.item(f"p{window.ctl.project.positions[0].id}", "values")[3]
         == "2"
     )
+
+
+def test_selftest_opens_and_closes_the_window(tmp_path):
+    try:
+        probe = tk.Tk()
+        probe.destroy()
+    except tk.TclError:
+        pytest.skip("no display available")
+    assert app_module.selftest() == 0
+    assert app_module.main(["--selftest"]) == 0

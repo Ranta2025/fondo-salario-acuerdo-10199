@@ -1049,6 +1049,20 @@ class App(tk.Tk):
         self.update_status()
 
 
-def main(argv: list[str] | None = None) -> None:
+def selftest() -> int:
+    """Open the main window on a throwaway project and close it; used to check a packaged build starts."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as folder:
+        window = App(Path(folder) / "selftest.fsal")
+        window.update()
+        window.destroy()
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
+    if args[:1] == ["--selftest"]:
+        return selftest()
     App(args[0] if args else None).mainloop()
+    return 0

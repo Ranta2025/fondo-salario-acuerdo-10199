@@ -1,3 +1,5 @@
+import sys
+
 from fondo_salario.ui.app import main
 
-main()
+sys.exit(main())

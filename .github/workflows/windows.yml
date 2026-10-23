@@ -35,6 +35,13 @@ jobs:
         run: |
           Copy-Item packaging/LEEME.txt dist/FondoSalario/LEEME.txt
           Compress-Archive -Path dist/FondoSalario -DestinationPath dist/FondoSalario-windows.zip
+      - name: Smoke-test the packaged application
+        shell: pwsh
+        run: |
+          $p = Start-Process dist/FondoSalario/FondoSalario.exe -ArgumentList "--selftest" -PassThru
+          if (-not $p.WaitForExit(90000)) { $p.Kill(); throw "the packaged app did not finish its self-test" }
+          if ($p.ExitCode -ne 0) { throw "self-test failed with exit code $($p.ExitCode)" }
+          Write-Host "self-test OK"
       - uses: actions/upload-artifact@v4
         with:
           name: FondoSalario-windows
