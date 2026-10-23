@@ -9,20 +9,31 @@ from pathlib import Path
 from fondo_salario.domain.calculation import CalculationResult, calculate
 from fondo_salario.domain.models import Area, Position, Settings, Worker
 from fondo_salario.export.excel_report import export_report
+from fondo_salario.importers.merge import ImportPlan, plan_structure, plan_workers, resolve
 from fondo_salario.importers.structure import AreaRow
-from fondo_salario.importers.workers import WorkerRow, _normalize_header, normalize_area
+from fondo_salario.importers.workers import WorkerRow, normalize_area
 from fondo_salario.persistence.sqlite_repo import Project, ProjectStore
 
 DEFAULT_CONTRIBUTION = 3
 
 
 @dataclass
-class WorkerImportSummary:
-    added: int = 0
+class ImportSummary:
+    added: int = 0  # workers added
+    areas_added: int = 0
+    positions_added: int = 0
+    completed: int = 0  # values of existing records filled in automatically
+    overwritten: int = 0  # differing values replaced after the user accepted them
+    kept: int = 0  # differing values the user decided to keep
+    unchanged: int = 0  # records of the file that were already complete
+    records_updated: int = 0
     defaults_used: int = 0
     undefined: int = 0  # imported without salary group or seniority; they must be completed by hand
     areas_created: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+
+
+WorkerImportSummary = ImportSummary  # earlier name
 
 
 class Controller:
@@ -107,63 +118,53 @@ class Controller:
         self._store.delete_worker(worker_id)
         self.refresh()
 
-    # -- imports ------------------------------------------------------------------------
-    def import_structure(self, rows: list[AreaRow]) -> int:
-        existing = {_normalize_header(a.name) for a in self.project.areas}
-        added = 0
-        for row in rows:
-            if _normalize_header(row.name) in existing:
-                continue
-            area = self._store.add_area(row.name)
-            existing.add(_normalize_header(row.name))
-            for p in row.positions:
-                self._store.add_position(
-                    Position(0, area.id, p.name, p.vacant, p.vacant, 0, p.salary, p.months_unexecuted)
-                )
-            added += 1
-        self.refresh()
-        return added
-
-    def import_workers(
+    # -- imports (merge into existing data) --------------------------------------------------
+    def plan_workers_import(
         self,
         rows: list[WorkerRow],
         create_missing_areas: bool = False,
         allow_undefined: bool = False,
-    ) -> WorkerImportSummary:
-        """Add workers. Areas match ignoring number prefixes («3.- Dir» = «Dir»), accents and case.
+    ) -> ImportPlan:
+        """What importing these workers would do. Areas match ignoring number prefixes («3.- Dir» = «Dir»).
 
         With `allow_undefined`, a missing salary group or seniority is stored as 0 («sin definir»): the
         calculation then reports the worker and pays 0.00 until the data is completed.
         """
-        by_name = {normalize_area(a.name): a for a in self.project.areas}
+        p = self.project
+        return plan_workers(rows, p.areas, p.workers, create_missing_areas, allow_undefined)
+
+    def plan_structure_import(self, rows: list[AreaRow]) -> ImportPlan:
+        return plan_structure(rows, self.project.areas, self.project.positions)
+
+    def apply_import(self, plan: ImportPlan) -> ImportSummary:
+        """Store the plan: add what is new, complete what is empty, apply the differences the user accepted.
+
+        Differences that were not accepted (`accept` is not True) keep the stored value. Nothing is deleted.
+        """
         settings = self.project.settings
         full_period = settings.expected_days_per_month * settings.months_paid
-        known = [(_normalize_header(w.full_name), w.national_id.strip()) for w in self.project.workers]
-        summary = WorkerImportSummary()
-        for row in rows:
-            key = (_normalize_header(row.full_name), row.national_id.strip())
-            if _is_duplicate(key, known):
-                summary.skipped.append(f"{row.full_name}: ya existe")
-                continue
-            area = _find_area(row, by_name, self.project.areas)
-            if area is None and create_missing_areas and row.area.strip():
-                area = self._store.add_area(row.area.strip())
-                by_name[normalize_area(row.area)] = area
-                summary.areas_created.append(area.name)
-            if area is None:
-                summary.skipped.append(f"{row.full_name}: área desconocida «{row.area}»")
-                continue
-            incomplete = row.salary_group is None or row.seniority_years is None
-            if incomplete and not allow_undefined:
-                summary.skipped.append(f"{row.full_name}: falta el grupo salarial o la antigüedad")
-                continue
-            defaulted = row.days_worked is None or row.contribution is None
+        summary = ImportSummary(
+            unchanged=plan.unchanged, skipped=list(plan.skipped), undefined=plan.undefined
+        )
+        created: dict[str, Area] = {}
+
+        def area_id_for(ref: int | str) -> int:
+            if isinstance(ref, int):
+                return ref
+            key = normalize_area(ref)
+            if key not in created:
+                created[key] = self._store.add_area(ref)
+                summary.areas_created.append(ref)
+            return created[key].id
+
+        for new in plan.new_workers:
+            row = new.row
             self._store.add_worker(
                 Worker(
                     id=0,
                     full_name=row.full_name,
                     national_id=row.national_id,
-                    area_id=area.id,
+                    area_id=area_id_for(new.area),
                     position_name=row.position,
                     salary_group=row.salary_group or 0,
                     seniority_years=row.seniority_years or 0,
@@ -172,35 +173,69 @@ class Controller:
                     eligible=False,  # the right to collect is granted by hand, worker by worker
                 )
             )
-            known.append(key)
             summary.added += 1
-            summary.defaults_used += int(defaulted)
-            summary.undefined += int(incomplete)
+            summary.defaults_used += int(new.defaulted)
+        for area_row in plan.new_areas:
+            area = self._store.add_area(area_row.name)
+            summary.areas_added += 1
+            for p in area_row.positions:
+                self._add_imported_position(area.id, p)
+                summary.positions_added += 1
+        for new_position in plan.new_positions:
+            self._add_imported_position(new_position.area_id, new_position.row)
+            summary.positions_added += 1
+
+        workers = {w.id: w for w in self.project.workers}
+        positions = {p.id: p for p in self.project.positions}
+        for item in plan.items:
+            changes = dict(item.fills)
+            summary.completed += len(item.fills)
+            for diff in item.conflicts:
+                if diff.accept:
+                    changes[diff.key] = diff.value
+                    summary.overwritten += 1
+                else:
+                    summary.kept += 1
+            if not changes:
+                continue
+            summary.records_updated += 1
+            if item.kind == "worker":
+                if "area_id" in changes:
+                    changes["area_id"] = area_id_for(changes["area_id"])
+                self._store.update_worker(replace(workers[item.target_id], **changes))
+            else:
+                position = positions[item.target_id]
+                if "vacant" in changes:
+                    changes["approved"] = max(position.approved, changes["vacant"])
+                self._store.update_position(replace(position, **changes))
         self.refresh()
         return summary
+
+    def _add_imported_position(self, area_id: int, row) -> None:
+        self._store.add_position(
+            Position(0, area_id, row.name, row.vacant, row.vacant, 0, row.salary, row.months_unexecuted)
+        )
+
+    def import_structure(self, rows: list[AreaRow]) -> int:
+        """Non-interactive import (keeps stored values on differences). Returns the number of new areas."""
+        plan = self.plan_structure_import(rows)
+        resolve(plan, "keep_all")
+        return self.apply_import(plan).areas_added
+
+    def import_workers(
+        self,
+        rows: list[WorkerRow],
+        create_missing_areas: bool = False,
+        allow_undefined: bool = False,
+    ) -> ImportSummary:
+        """Non-interactive import (keeps stored values on differences)."""
+        plan = self.plan_workers_import(rows, create_missing_areas, allow_undefined)
+        resolve(plan, "keep_all")
+        return self.apply_import(plan)
 
     # -- export -------------------------------------------------------------------------
     def export(self, path: str | Path) -> None:
         export_report(path, self.project.settings, self.calculation())
-
-
-def _find_area(row: WorkerRow, by_name: dict[str, Area], ordered: list[Area]) -> Area | None:
-    """Exact name, then one name contained in the other, then the legacy area number."""
-    key = normalize_area(row.area)
-    if key in by_name:
-        return by_name[key]
-    contained = [a for k, a in by_name.items() if len(min(k, key, key=len)) >= 5 and (k in key or key in k)]
-    if len(contained) == 1:
-        return contained[0]
-    if row.area_number and 1 <= row.area_number <= len(ordered):
-        return ordered[row.area_number - 1]
-    return None
-
-
-def _is_duplicate(key: tuple[str, str], known: list[tuple[str, str]]) -> bool:
-    """Same normalized name and the same ID number (or one of the two has no ID yet)."""
-    name, national_id = key
-    return any(n == name and (not i or not national_id or i == national_id) for n, i in known)
 
 
 def parse_money(text: str) -> Decimal:
