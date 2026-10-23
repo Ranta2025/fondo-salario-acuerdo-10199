@@ -37,8 +37,8 @@ existing ones are joined: empty fields are completed automatically, differing va
 Nothing is deleted. Applies to Excel and CSV imports (workers and areas/positions).
 - [x] T15 Pure merge planner (`importers/merge.py`): match, fills, conflicts, resolve(mode, ask) + tests — 22 planner tests
 - [x] T16 Controller: plan_*/apply_import (import_workers/import_structure become thin wrappers) + tests — 160 tests
-- [ ] T17 Dialogs: summary + one-by-one conflict dialog with «accept all the rest»; wire both import buttons; window tests
-- [ ] T18 Docs (README/SPEC), full verification, merge + release
+- [x] T17 Dialogs: summary + one-by-one conflict dialog with «accept all the rest»; wire both import buttons; window tests
+- [ ] T18 Docs done; full verification passed locally (168 tests); merge + release pending user OK
 
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).

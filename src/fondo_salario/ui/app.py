@@ -11,12 +11,14 @@ from tkinter import font as tkfont
 
 from fondo_salario.domain.models import Position, Settings, Worker
 from fondo_salario.export.excel_report import to_roman
+from fondo_salario.importers.merge import ImportPlan, resolve
 from fondo_salario.importers.structure import read_structure
 from fondo_salario.importers.workers import parse_roman, read_workers_auto
 from fondo_salario.messages import describe
 from fondo_salario.persistence.sqlite_repo import AreaInUseError, ProjectStore
-from fondo_salario.ui.controller import Controller, parse_money, resolve_distribute
+from fondo_salario.ui.controller import Controller, ImportSummary, parse_money, resolve_distribute
 from fondo_salario.ui.forms import Field, ask_form
+from fondo_salario.ui.merge_dialogs import ask_conflict, ask_summary
 
 APP_TITLE = "Fondo de salario — Acuerdo 10199/2025"
 FILETYPES = [("Proyecto de fondo de salario", "*.fsal")]
@@ -115,6 +117,62 @@ def apply_style(root: tk.Tk) -> None:
     style.configure("Status.TLabel", padding=(10, 6))
     style.configure("Big.TLabel", font=(family, FONT_SIZE + 2, "bold"))
     root.option_add("*TCombobox*Listbox.font", (family, FONT_SIZE))
+
+
+def run_import(parent: tk.Misc, ctl: Controller, plan: ImportPlan) -> ImportSummary | None:
+    """Summary first, then the differences one by one (or all at once); None if the user cancelled."""
+    mode = ask_summary(parent, plan)
+    if mode is None:
+        return None
+    if not resolve(plan, mode, lambda item, diff, i, n: ask_conflict(parent, item, diff, i, n)):
+        return None
+    return ctl.apply_import(plan)
+
+
+def import_report(summary: ImportSummary, errors: list[str], workers: bool) -> str:
+    """Plain-Spanish result of an import."""
+    lines = ["Importación terminada."]
+    if workers and summary.added:
+        lines.append(f"• Trabajadores nuevos agregados: {summary.added} (todos SIN derecho a cobro).")
+    if summary.areas_added:
+        lines.append(f"• Áreas nuevas agregadas: {summary.areas_added}.")
+    if summary.positions_added:
+        lines.append(f"• Cargos nuevos agregados: {summary.positions_added}.")
+    if summary.areas_created:
+        lines.append(f"• Áreas creadas: {len(summary.areas_created)}.")
+    if summary.completed:
+        lines.append(f"• Datos completados que te faltaban: {summary.completed}.")
+    if summary.overwritten or summary.kept:
+        lines.append(f"• Diferencias: {summary.overwritten} sobrescritas, {summary.kept} conservadas.")
+    if summary.unchanged:
+        lines.append(f"• Ya estaban completos y no cambian: {summary.unchanged}.")
+    if summary.undefined:
+        lines.append(
+            f"• {summary.undefined} trabajadores no tienen grupo salarial o antigüedad en el archivo: "
+            "aparecen con «—» y no cobrarán hasta que los complete (haga doble clic en cada uno)."
+        )
+    if summary.defaults_used:
+        lines.append(
+            f"• {summary.defaults_used} usaron valores por defecto "
+            "(días completos, contribución 3): revíselos."
+        )
+    if workers and summary.added:
+        lines.append("\nMárquelos en esta pestaña con «Dar derecho a cobro».")
+    problems = errors + summary.skipped
+    if problems:
+        lines.append(f"\nNo se importaron {len(problems)} filas:")
+        lines.extend(problems[:15])
+        if len(problems) > 15:
+            lines.append(f"… y {len(problems) - 15} más")
+    return "\n".join(lines)
+
+
+def nothing_new_text(plan: ImportPlan, errors: list[str]) -> str:
+    text = "No hay nada nuevo: todos los datos del archivo ya estaban registrados y completos."
+    problems = errors + plan.skipped
+    if problems:
+        text += f"\n\nNo se pueden importar {len(problems)} filas:\n" + "\n".join(problems[:15])
+    return text
 
 
 def hint(parent, text: str) -> ttk.Label:
@@ -507,16 +565,19 @@ class StructureTab(ttk.Frame):
             return
         try:
             areas = read_structure(path)
-            added = self.app.ctl.import_structure(areas)
+            plan = self.app.ctl.plan_structure_import(areas)
         except Exception as error:  # unreadable or unexpected workbook
             messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
             return
-        positions = sum(len(a.positions) for a in areas)
+        if not (plan.new_count or plan.fill_count or plan.conflicts):
+            messagebox.showinfo("Importar", nothing_new_text(plan, []), parent=self)
+            return
+        summary = run_import(self, self.app.ctl, plan)
+        if summary is None:
+            return
         messagebox.showinfo(
             "Importar",
-            f"Se leyeron {len(areas)} áreas con {positions} cargos.\n"
-            f"Áreas nuevas agregadas: {added} (las que ya existían no se repiten).\n\n"
-            "Revise las vacantes de cada cargo.",
+            import_report(summary, [], workers=False) + "\n\nRevise las vacantes de cada cargo.",
             parent=self,
         )
         self.app.changed()
@@ -761,32 +822,17 @@ class WorkersTab(ttk.Frame):
         except Exception as error:  # unreadable file
             messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
             return
-        summary = self.app.ctl.import_workers(
+        plan = self.app.ctl.plan_workers_import(
             read.rows, create_missing_areas=read.legacy, allow_undefined=read.legacy
         )
-        problems = [f"Fila {e.line}: {e.message}" for e in read.errors] + summary.skipped
-        text = f"Trabajadores importados: {summary.added}."
-        if summary.added:
-            text += (
-                "\nTodos entraron SIN derecho a cobro: márquelos en esta pestaña con «Dar derecho a cobro»."
-            )
-        if summary.areas_created:
-            text += f"\nÁreas nuevas creadas: {len(summary.areas_created)}."
-        if summary.undefined:
-            text += (
-                f"\n{summary.undefined} trabajadores no tienen grupo salarial o antigüedad en el archivo: "
-                "aparecen con «—» y no cobrarán hasta que los complete (haga doble clic en cada uno)."
-            )
-        if summary.defaults_used:
-            text += (
-                f"\n{summary.defaults_used} usaron valores por defecto "
-                "(días completos, contribución 3): revíselos."
-            )
-        if problems:
-            text += f"\n\nNo se importaron {len(problems)} filas:\n" + "\n".join(problems[:15])
-            if len(problems) > 15:
-                text += f"\n… y {len(problems) - 15} más"
-        messagebox.showinfo("Importar", text, parent=self)
+        errors = [f"Fila {e.line}: {e.message}" for e in read.errors]
+        if not (plan.new_count or plan.fill_count or plan.conflicts):
+            messagebox.showinfo("Importar", nothing_new_text(plan, errors), parent=self)
+            return
+        summary = run_import(self, self.app.ctl, plan)
+        if summary is None:
+            return
+        messagebox.showinfo("Importar", import_report(summary, errors, workers=True), parent=self)
         self.app.changed()
 
 

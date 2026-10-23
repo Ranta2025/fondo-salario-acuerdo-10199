@@ -39,6 +39,11 @@ Los pesos (25/40/20/15) y las escalas por defecto siguen el documento «Rafelito
    (columnas: nombre, carné, área, cargo, grupo, antigüedad, días, contribución).
    **Todos entran sin derecho a cobro**: el derecho es solo para quienes asumen las tareas de una plaza
    vacante. Márcalo con «Dar derecho a cobro» (puedes seleccionar varios a la vez) o quítalo con «Quitar derecho a cobro».
+   **Importar sobre datos que ya tienes:** el programa no duplica ni borra nada. Identifica a cada trabajador por su
+   **carné o su nombre**, y a cada cargo por **área + puesto**. Lo que no tienes se agrega; a lo que ya existe le
+   **completa solo los datos que le faltan** (por ejemplo el carné); y si algún dato **es distinto**, te lo pregunta
+   **uno por uno** (sobrescribir o conservar el tuyo) o puedes **aceptarlas todas directamente**. Antes de aplicar
+   muestra un resumen y puedes cancelar sin que cambie nada.
 4. **Resultados**: revisa los montos y las observaciones. Pulsa **Exportar a Excel** para generar el informe
    (montos por área, coeficientes por trabajador, pre-nómina y parámetros usados), listo para imprimir.
 

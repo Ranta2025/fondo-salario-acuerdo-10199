@@ -177,3 +177,155 @@ def test_contribution_labels_follow_the_regulation():
     assert app_module.contribution_from_text("4 - Bueno") == 4
     assert app_module.contribution_from_text("1 - Sin bonificación") == 1
     assert app_module.contribution_label(3) == "3 - Satisfactorio"
+
+
+# --- smart import ---------------------------------------------------------------------------
+def _csv(tmp_path, text):
+    path = tmp_path / "w.csv"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _patch_import(monkeypatch, path, summary_mode, answers=()):
+    monkeypatch.setattr(app_module.filedialog, "askopenfilename", lambda *a, **k: str(path))
+    shown = []
+    monkeypatch.setattr(app_module.messagebox, "showinfo", lambda t, m, **k: shown.append(m))
+    asked = {"summary": 0, "conflicts": []}
+
+    def summary(parent, plan):
+        asked["summary"] += 1
+        return summary_mode
+
+    replies = iter(answers)
+
+    def conflict(parent, item, diff, index, total):
+        asked["conflicts"].append((diff.key, index, total))
+        return next(replies)
+
+    monkeypatch.setattr(app_module, "ask_summary", summary)
+    monkeypatch.setattr(app_module, "ask_conflict", conflict)
+    return shown, asked
+
+
+def _window_with_ana(window):
+    area = window.ctl.project.areas[0]  # "Dir"
+    window.ctl.add_worker(Worker(0, "Ana Pérez Gómez", "", area.id, 12, 5, 72, 3))
+    window.ctl.save()
+    window.changed()
+    return window.tabs["3. Trabajadores"]
+
+
+def test_import_completes_the_id_and_adds_new_workers(window, monkeypatch, tmp_path):
+    tab = _window_with_ana(window)
+    path = _csv(
+        tmp_path,
+        "nombre;carné;área;grupo;antigüedad\nana perez gomez;00112233445;Dir;XII;5\nBeto Nuevo;;Dir;III;1\n",
+    )
+    shown, asked = _patch_import(monkeypatch, path, "keep_all")
+    tab.import_file()
+    by_name = {w.full_name: w for w in window.ctl.project.workers}
+    assert by_name["Ana Pérez Gómez"].national_id == "00112233445"
+    assert "Beto Nuevo" in by_name and by_name["Beto Nuevo"].eligible is False
+    assert len(window.ctl.project.workers) == 2  # Ana was joined, not duplicated
+    assert asked["summary"] == 1 and "completad" in shown[-1].lower()
+
+
+def test_import_asks_each_difference_one_by_one(window, monkeypatch, tmp_path):
+    tab = _window_with_ana(window)
+    path = _csv(tmp_path, "nombre;carné;área;grupo;antigüedad\nAna Pérez Gómez;00112233445;Dir;XV;9\n")
+    shown, asked = _patch_import(monkeypatch, path, "review", answers=["overwrite", "keep"])
+    tab.import_file()
+    ana = window.ctl.project.workers[0]
+    assert [c[1:] for c in asked["conflicts"]] == [(1, 2), (2, 2)]
+    assert (ana.salary_group, ana.seniority_years, ana.national_id) == (15, 5, "00112233445")
+
+
+def test_import_can_accept_all_differences_directly(window, monkeypatch, tmp_path):
+    tab = _window_with_ana(window)
+    path = _csv(tmp_path, "nombre;área;grupo;antigüedad\nAna Pérez Gómez;Dir;XV;9\n")
+    _, asked = _patch_import(monkeypatch, path, "accept_all")
+    tab.import_file()
+    ana = window.ctl.project.workers[0]
+    assert (ana.salary_group, ana.seniority_years) == (15, 9) and asked["conflicts"] == []
+
+
+def test_cancelling_the_import_changes_nothing(window, monkeypatch, tmp_path):
+    tab = _window_with_ana(window)
+    path = _csv(tmp_path, "nombre;área;grupo;antigüedad\nAna Pérez Gómez;Dir;XV;9\nBeto Nuevo;Dir;III;1\n")
+    _patch_import(monkeypatch, path, None)
+    tab.import_file()
+    assert [w.full_name for w in window.ctl.project.workers] == ["Ana Pérez Gómez"]
+    assert window.ctl.project.workers[0].salary_group == 12
+
+
+def test_cancelling_in_the_middle_of_the_review_applies_nothing(window, monkeypatch, tmp_path):
+    tab = _window_with_ana(window)
+    path = _csv(tmp_path, "nombre;área;grupo;antigüedad\nAna Pérez Gómez;Dir;XV;9\nBeto Nuevo;Dir;III;1\n")
+    _patch_import(monkeypatch, path, "review", answers=["overwrite", None])
+    tab.import_file()
+    assert len(window.ctl.project.workers) == 1 and window.ctl.project.workers[0].salary_group == 12
+
+
+def test_importing_data_that_is_already_there_says_so_without_asking(window, monkeypatch, tmp_path):
+    tab = _window_with_ana(window)
+    path = _csv(tmp_path, "nombre;área;grupo;antigüedad\nana perez gomez;Dir;XII;5\n")
+    shown, asked = _patch_import(monkeypatch, path, "keep_all")
+    tab.import_file()
+    assert asked["summary"] == 0 and "nada nuevo" in shown[-1].lower()
+
+
+def test_structure_import_adds_positions_to_an_existing_area(window, monkeypatch, tmp_path):
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Dist.Monto x area"
+    ws.append([])
+    ws.append([None, 1, "1.- Dir", None, None, None, None])
+    ws.append([None, 1, "Jefe", 1, 6060, None, 3])
+    path = tmp_path / "s.xlsx"
+    wb.save(path)
+    shown, _ = _patch_import(monkeypatch, path, "keep_all")
+    window.tabs["2. Áreas y cargos"].import_excel()
+    (position,) = window.ctl.project.positions
+    assert (position.name, position.vacant, position.salary) == ("Jefe", 1, D("6060"))
+    assert [a.name for a in window.ctl.project.areas] == ["Dir"]
+
+
+def _press(root, text):
+    """Click the button with this text in the open dialog."""
+
+    def walk(widget):
+        for child in widget.winfo_children():
+            if child.winfo_class() == "TButton" and child.cget("text").startswith(text):
+                child.invoke()
+                return True
+            if walk(child):
+                return True
+        return False
+
+    walk(root)
+
+
+def test_the_real_dialogs_return_the_chosen_option(window):
+    from fondo_salario.importers.merge import plan_workers
+    from fondo_salario.importers.workers import WorkerRow
+    from fondo_salario.ui.merge_dialogs import ask_conflict, ask_summary, summary_lines
+
+    area = window.ctl.project.areas[0]
+    window.ctl.add_worker(Worker(0, "Ana Pérez", "", area.id, 12, 5, 72, 3))
+    rows = [WorkerRow("Ana Pérez", "001", "Dir", salary_group=15, seniority_years=5)]
+    plan = plan_workers(rows, window.ctl.project.areas, window.ctl.project.workers)
+    text = "\n".join(summary_lines(plan))
+    assert "completarán solos" in text and "Carné de identidad" in text and "tú decides" in text
+    window.after(200, lambda: _press(window, "Revisar"))
+    assert ask_summary(window, plan) == "review"
+    window.after(200, lambda: _press(window, "Aceptar todas"))
+    assert ask_summary(window, plan) == "accept_all"
+    item, diff = plan.conflicts[0]
+    window.after(200, lambda: _press(window, "Conservar"))
+    assert ask_conflict(window, item, diff, 1, 3) == "keep"
+    window.after(200, lambda: _press(window, "Sobrescribir esta y las 2"))
+    assert ask_conflict(window, item, diff, 1, 3) == "overwrite_rest"
+    window.after(200, lambda: _press(window, "Cancelar"))
+    assert ask_conflict(window, item, diff, 3, 3) is None

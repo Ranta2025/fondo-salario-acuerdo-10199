@@ -93,3 +93,12 @@ Packaging notes (PyInstaller one-file for Windows) go in README.
   vacant position's tasks are marked. Workers without the right get 0.00 and their data is not validated.
 - Contribution grade 1 means *no bonus*: the worker is excluded from the distribution (0.00) and does not dilute the others.
 - If nobody has the right to collect the results explain it (`no_eligible`).
+
+## Smart import (iteration 4)
+Imports (workers CSV/XLSX, areas/positions XLSX) merge into existing data via `importers/merge.py`:
+- Identity: worker = ID number, else normalized full name; position = area + normalized position name; area = normalized name.
+- Not found -> added (workers start without the right to collect). Found -> empty fields completed automatically
+  (empty = «», group 0, seniority 0, salary/vacant/months 0); different values -> `FieldDiff` asked one by one
+  (answers: overwrite / keep / overwrite the rest / cancel) or all at once («accept_all» / «keep_all»).
+- A zero in the areas file means «no data» and never overwrites. Nothing is deleted. Cancelling applies nothing.
+- `apply_import(plan)` stores the result; `import_workers` / `import_structure` are non-interactive wrappers that keep stored values.
