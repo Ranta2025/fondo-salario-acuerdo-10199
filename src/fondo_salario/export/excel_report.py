@@ -35,6 +35,10 @@ def to_roman(number: int) -> str:
     return out
 
 
+def _yes_no(flag: bool) -> str:
+    return "Sí" if flag else "No"
+
+
 def _money(value: Decimal) -> float:
     return float(value)
 
@@ -146,6 +150,7 @@ def _worker_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> Non
         "Trabajador",
         "Carné de identidad",
         "Cargo",
+        "Derecho a cobro",
         "Tiempo trabajado (días)",
         "Eval. tiempo",
         "Grupo salarial",
@@ -168,46 +173,58 @@ def _worker_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> Non
             _row(
                 ws,
                 row,
-                [area.area.name, w.full_name, w.national_id, w.position_name, w.days_worked, r.time_score]
+                [area.area.name, w.full_name, w.national_id, w.position_name, _yes_no(w.eligible)]
+                + [w.days_worked, r.time_score]
                 + [to_roman(w.salary_group) if 1 <= w.salary_group <= 25 else w.salary_group]
                 + [r.responsibility_score, w.seniority_years, r.seniority_score, r.contribution_score]
                 + [float(r.coefficient), float(r.area_coefficient), _money(r.amount)],
-                money_cols=(13,),
+                money_cols=(14,),
             )
             row += 1
         subtotal = sum((r.amount for r in members), Decimal(0))
         _row(
             ws,
             row,
-            [f"Subtotal {area.area.name}"] + [None] * 12 + [_money(subtotal)],
+            [f"Subtotal {area.area.name}"] + [None] * 13 + [_money(subtotal)],
             bold=True,
             fill=AREA_FILL,
-            money_cols=(13,),
+            money_cols=(14,),
         )
         row += 1
     orphans = [r for r in result.workers if r.worker.area_id not in area_names]
     for r in orphans:
-        _row(ws, row, ["(sin área)", r.worker.full_name, r.worker.national_id] + [None] * 10 + [0.0])
+        _row(
+            ws,
+            row,
+            ["(sin área)", r.worker.full_name, r.worker.national_id, None, _yes_no(r.worker.eligible)]
+            + [None] * 9
+            + [0.0],
+        )
         row += 1
     total = sum((r.amount for r in result.workers), Decimal(0))
-    _row(ws, row, ["TOTAL"] + [None] * 12 + [_money(total)], bold=True, money_cols=(13,))
+    _row(ws, row, ["TOTAL"] + [None] * 13 + [_money(total)], bold=True, money_cols=(14,))
     ws.cell(row=row + 2, column=1, value=f"Comprobación: total repartido a los trabajadores {total:,.2f}")
-    _finish(ws, [30, 30, 16, 26, 11, 9, 10, 12, 11, 11, 11, 12, 14, 16])
+    _finish(ws, [30, 30, 16, 26, 12, 11, 9, 10, 12, 11, 11, 11, 12, 14, 16])
 
 
 def _payroll_sheet(wb: Workbook, settings: Settings, result: CalculationResult, subtitle: str) -> None:
     ws = wb.create_sheet("Pre-nómina")
-    _title(ws, "Pre-nómina", subtitle, 5)
-    _header(ws, 4, ["No.", "Nombre y apellidos", "Carné de identidad", "Área", "Monto a pagar"])
+    _title(ws, "Pre-nómina", subtitle, 6)
+    _header(
+        ws,
+        4,
+        ["No.", "Nombre y apellidos", "Carné de identidad", "Área", "Monto a pagar", "Derecho a cobro"],
+    )
     area_names = {a.area.id: a.area.name for a in result.areas}
     row = 5
     for number, r in enumerate(result.workers, start=1):
         w = r.worker
         values = [number, w.full_name, w.national_id, area_names.get(w.area_id, ""), _money(r.amount)]
+        values.append(_yes_no(w.eligible))
         _row(ws, row, values, money_cols=(4,))
         row += 1
     total = sum((r.amount for r in result.workers), Decimal(0))
-    _row(ws, row, [None, "TOTAL", None, None, _money(total)], bold=True, money_cols=(4,))
+    _row(ws, row, [None, "TOTAL", None, None, _money(total), None], bold=True, money_cols=(4,))
     status = "OK" if total == settings.total_amount else "REVISAR"
     ws.cell(
         row=row + 2,
@@ -217,7 +234,7 @@ def _payroll_sheet(wb: Workbook, settings: Settings, result: CalculationResult, 
             f"total pre-nómina {total:,.2f} — {status}"
         ),
     )
-    _finish(ws, [6, 38, 20, 34, 16])
+    _finish(ws, [6, 38, 20, 34, 16, 16])
 
 
 def _parameters_sheet(

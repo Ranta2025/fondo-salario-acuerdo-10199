@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -93,6 +93,14 @@ class Controller:
 
     def update_worker(self, worker: Worker) -> None:
         self._store.update_worker(worker)
+        self.refresh()
+
+    def set_eligible(self, worker_ids: list[int], eligible: bool) -> None:
+        """Give or take away the right to collect for several workers at once."""
+        wanted = set(worker_ids)
+        for worker in self.project.workers:
+            if worker.id in wanted and worker.eligible != eligible:
+                self._store.update_worker(replace(worker, eligible=eligible))
         self.refresh()
 
     def delete_worker(self, worker_id: int) -> None:

@@ -28,7 +28,7 @@ Source: weights 25/40/20/15 (resp/contrib/time/seniority); time = % of days work
 cover the vacant position's tasks); area amount -> workers by coef / sum of area coefs. Doc examples used as tests.
 - [x] T12 New defaults (weights, seniority bands), time-score rule by % ranges; tests from the document's monthly example — 122 tests; document monthly example reproduced (15.50 points, 8,000 distributed)
 - [x] T13 Schema v3: old default settings upgrade to the new ones; «restablecer» button; docs (SPEC, README) updated — 125 tests; v2 projects with old defaults are upgraded, customized ones untouched
-- [ ] T14 «Derecho a cobro»: clear column/filter/bulk toggle in Trabajadores, column in the Excel report, contribution labels
+- [x] T14 «Derecho a cobro»: clear column/filter/bulk toggle in Trabajadores, column in the Excel report, contribution labels — 130 tests; bulk grant/revoke, filter, Excel columns, contribution labels; parameters form fits 1366x680
 
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).

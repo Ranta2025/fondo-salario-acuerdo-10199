@@ -133,3 +133,47 @@ def test_reset_button_restores_the_regulation_values(window):
     params.use_regulation_values()
     assert params.vars["w_time"].get() == "0.20" and params.vars["w_con"].get() == "0.40"
     assert params.vars["b_sen"].get() == "0:1, 6:2, 11:3, 16:4, 21:5"
+
+
+def _add_workers(window, count=3):
+    area = window.ctl.project.areas[0]
+    for i in range(count):
+        window.ctl.add_worker(Worker(0, f"Trabajador {i}", str(i), area.id, 12, 5, 72, 4))
+    window.changed()
+    return window.tabs["3. Trabajadores"]
+
+
+def test_bulk_toggle_of_the_right_to_collect(window):
+    tab = _add_workers(window)
+    ids = tab.tree.get_children()
+    tab.tree.selection_set(ids[:2])
+    tab.revoke_right()
+    assert [w.eligible for w in window.ctl.project.workers] == [False, False, True]
+    tab.tree.selection_set(ids[:1])
+    tab.grant_right()
+    assert [w.eligible for w in window.ctl.project.workers] == [True, False, True]
+
+
+def test_filter_by_right_to_collect(window):
+    tab = _add_workers(window)
+    window.ctl.set_eligible([window.ctl.project.workers[0].id], False)
+    window.changed()
+    tab.right_filter.set("Con derecho")
+    tab.refresh()
+    assert len(tab.tree.get_children()) == 2
+    tab.right_filter.set("Sin derecho")
+    tab.refresh()
+    assert len(tab.tree.get_children()) == 1
+
+
+def test_contribution_labels_follow_the_regulation():
+    assert app_module.CONTRIBUTION_CHOICES == [
+        "5 - Excepcional",
+        "4 - Bueno",
+        "3 - Satisfactorio",
+        "2 - Regular",
+        "1",
+    ]
+    assert app_module.contribution_from_text("4 - Bueno") == 4
+    assert app_module.contribution_from_text("1") == 1
+    assert app_module.contribution_label(3) == "3 - Satisfactorio"

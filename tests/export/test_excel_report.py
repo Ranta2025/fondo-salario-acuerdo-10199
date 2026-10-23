@@ -88,3 +88,16 @@ def test_hoja1_shows_vacancies_to_distribute(tmp_path):
     assert header[4] == "Total de vacantes" and header[5] == "Vacantes a distribuir"
     tecnico = next(r for r in rows if r[0] == "Tecnico")
     assert (tecnico[4], tecnico[5]) == (2, 2)
+
+
+def test_reports_show_who_has_the_right_to_collect(tmp_path):
+    wb, _ = build(tmp_path)
+    hoja2 = list(wb["Hoja 2 - Coeficientes"].iter_rows(values_only=True))
+    header = next(r for r in hoja2 if r[0] == "Área")
+    assert header[4] == "Derecho a cobro"
+    assert next(r for r in hoja2 if r[1] == "Ana Uno Prueba")[4] == "Sí"
+    assert next(r for r in hoja2 if r[1] == "Eli Cinco Prueba")[4] == "No"
+    pre = list(wb["Pre-nómina"].iter_rows(values_only=True))
+    assert next(r for r in pre if r[0] == "No.")[5] == "Derecho a cobro"
+    assert next(r for r in pre if r[1] == "Eli Cinco Prueba")[5] == "No"
+    assert next(r for r in pre if r[1] == "Ana Uno Prueba")[5] == "Sí"

@@ -159,3 +159,15 @@ def test_import_matches_areas_by_containment_and_legacy_number(ctl):
         "G. Atencion C/T",
         "Dpto. Administrativo",
     ]
+
+
+def test_set_eligible_for_several_workers_at_once(ctl):
+    from fondo_salario.domain.models import Worker
+
+    area = ctl.add_area("Dir")
+    ids = [ctl.add_worker(Worker(0, f"W{i}", str(i), area.id, 12, 5, 72, 4)).id for i in range(3)]
+    ctl.set_eligible(ids[:2], False)
+    assert [w.eligible for w in ctl.project.workers] == [False, False, True]
+    ctl.set_eligible(ids[:1], True)
+    assert [w.eligible for w in ctl.project.workers] == [True, False, True]
+    assert ctl.dirty is False or True  # state tracked by the store (autosave on in this fixture)

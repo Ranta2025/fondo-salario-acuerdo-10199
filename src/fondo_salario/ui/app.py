@@ -23,11 +23,26 @@ FILETYPES = [("Proyecto de fondo de salario", "*.fsal")]
 ROMANS = [to_roman(n) for n in range(1, 26)]
 FONT_SIZE = 12
 
+# Contribution grades as described in the regulation («Rafelito 3»); grade 1 has no description there.
+CONTRIBUTION_NAMES = {5: "Excepcional", 4: "Bueno", 3: "Satisfactorio", 2: "Regular"}
+
 COLOR_STRIPE = "#eef2f7"
 COLOR_AREA = "#d9e2ef"
 COLOR_OK = "#1b6e2d"
 COLOR_WARN = "#b00020"
 COLOR_HINT = "#4a4a4a"
+
+
+def contribution_label(grade: int) -> str:
+    name = CONTRIBUTION_NAMES.get(grade)
+    return f"{grade} - {name}" if name else str(grade)
+
+
+CONTRIBUTION_CHOICES = [contribution_label(g) for g in (5, 4, 3, 2, 1)]
+
+
+def contribution_from_text(text: str) -> int:
+    return int(str(text).strip().split()[0])
 
 
 def money_text(value: Decimal) -> str:
@@ -173,17 +188,32 @@ class ParametersTab(ttk.Frame):
         hint(
             self,
             "Escriba el monto real que se va a repartir y los meses que se pagan. Los pesos y las escalas "
-            "ya vienen con valores habituales; cámbielos solo si su reglamento interno dice otra cosa.",
+            "ya vienen con los valores del nuevo reglamento (25 / 40 / 20 / 15); cámbielos solo si su "
+            "reglamento interno dice otra cosa.",
         )
         form = ttk.Frame(self)
         form.pack(anchor="w")
         self.vars: dict[str, tk.StringVar] = {}
-        for row, (key, label) in enumerate(self.FIELDS):
-            ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", pady=6, padx=(0, 16))
+        # (row, label column): amounts on the left, weights on the right, the two scales below
+        layout = {
+            "total": (0, 0),
+            "months": (1, 0),
+            "days": (2, 0),
+            "w_resp": (0, 2),
+            "w_con": (1, 2),
+            "w_time": (2, 2),
+            "w_sen": (3, 2),
+            "b_resp": (4, 0),
+            "b_sen": (5, 0),
+        }
+        for key, label in self.FIELDS:
+            row, col = layout[key]
+            wide = key.startswith("b_")
+            ttk.Label(form, text=label).grid(row=row, column=col, sticky="w", pady=5, padx=(0, 14))
             self.vars[key] = tk.StringVar()
             self.vars[key].trace_add("write", self._on_edit)
-            width = 50 if key.startswith("b_") else 18
-            ttk.Entry(form, textvariable=self.vars[key], width=width).grid(row=row, column=1, sticky="w")
+            entry = ttk.Entry(form, textvariable=self.vars[key], width=44 if wide else 16)
+            entry.grid(row=row, column=col + 1, columnspan=3 if wide else 1, sticky="w", padx=(0, 40))
         ttk.Button(
             self, text="Usar los valores del nuevo reglamento", command=self.use_regulation_values
         ).pack(anchor="w", pady=(12, 0))
@@ -511,8 +541,8 @@ class WorkersTab(ttk.Frame):
         ttk.Label(self, text="Paso 3: Trabajadores", style="Title.TLabel").pack(anchor="w")
         hint(
             self,
-            "Agregue a cada trabajador con sus datos. "
-            "Quite la marca de «Cobra» a quien no deba recibir pago.",
+            "Agregue a cada trabajador con sus datos. El derecho a cobro es solo para quienes asumen las "
+            "tareas de una plaza vacante: quíteselo a los demás (puede marcar varios a la vez).",
         )
         button_bar(
             self,
@@ -520,6 +550,8 @@ class WorkersTab(ttk.Frame):
                 ("Agregar trabajador", self.add),
                 ("Editar", self.edit),
                 ("Eliminar", self.delete),
+                ("Dar derecho a cobro", self.grant_right),
+                ("Quitar derecho a cobro", self.revoke_right),
                 ("Importar desde Excel/CSV…", self.import_file),
             ],
         )
@@ -534,16 +566,27 @@ class WorkersTab(ttk.Frame):
         self.combo = ttk.Combobox(filters, textvariable=self.area_filter, state="readonly", width=34)
         self.combo.pack(side="left", padx=6)
         self.combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
+        ttk.Label(filters, text="Derecho a cobro:").pack(side="left", padx=(18, 0))
+        self.right_filter = tk.StringVar(value="Todos")
+        right_combo = ttk.Combobox(
+            filters,
+            textvariable=self.right_filter,
+            values=["Todos", "Con derecho", "Sin derecho"],
+            state="readonly",
+            width=14,
+        )
+        right_combo.pack(side="left", padx=6)
+        right_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
         columns = [
-            ("name", "Nombre y apellidos", 230),
-            ("ci", "Carné de identidad", 185),
-            ("area", "Área", 260),
-            ("position", "Cargo", 140),
-            ("group", "Grupo", 80),
-            ("years", "Antigüedad", 125),
-            ("days", "Días", 70),
-            ("contribution", "Contrib.", 100),
-            ("eligible", "Cobra", 80),
+            ("name", "Nombre y apellidos", 220),
+            ("ci", "Carné de identidad", 170),
+            ("area", "Área", 220),
+            ("position", "Cargo", 130),
+            ("group", "Grupo", 75),
+            ("years", "Antigüedad", 115),
+            ("days", "Días", 60),
+            ("contribution", "Contrib.", 90),
+            ("eligible", "Derecho a cobro", 160),
         ]
         self.tree = make_tree(self, columns, show="headings")
         self.tree.bind("<Double-1>", lambda _e: self.edit())
@@ -565,6 +608,9 @@ class WorkersTab(ttk.Frame):
             if wanted != self.ALL and area != wanted:
                 continue
             if text and text not in w.full_name.lower() and text not in w.national_id:
+                continue
+            right = self.right_filter.get()
+            if (right == "Con derecho" and not w.eligible) or (right == "Sin derecho" and w.eligible):
                 continue
             shown += 1
             self.tree.insert(
@@ -602,8 +648,8 @@ class WorkersTab(ttk.Frame):
             Field("group", "Grupo salarial", "choice", ROMANS),
             Field("years", "Antigüedad (años)"),
             Field("days", "Días trabajados en el período"),
-            Field("contribution", "Contribución (1 a 5)", "choice", ["1", "2", "3", "4", "5"]),
-            Field("eligible", "Cobra en este período", "bool"),
+            Field("contribution", "Contribución", "choice", CONTRIBUTION_CHOICES),
+            Field("eligible", "Derecho a cobro (asume tareas de una plaza vacante)", "bool"),
         ]
 
         def build(v: dict) -> Worker:
@@ -623,7 +669,7 @@ class WorkersTab(ttk.Frame):
                 salary_group=group,
                 seniority_years=parse_int(v["years"], "Antigüedad", 0, 60),
                 days_worked=parse_int(v["days"], "Días trabajados", 0, 1000),
-                contribution=parse_int(v["contribution"], "Contribución", 1, 5),
+                contribution=parse_int(str(contribution_from_text(v["contribution"])), "Contribución", 1, 5),
                 eligible=bool(v["eligible"]),
             )
 
@@ -634,7 +680,7 @@ class WorkersTab(ttk.Frame):
         initial = {
             "days": s.expected_days_per_month * s.months_paid,
             "years": 0,
-            "contribution": "3",
+            "contribution": contribution_label(3),
             "eligible": True,
         }
         worker = self._form("Agregar trabajador", initial)
@@ -664,12 +710,32 @@ class WorkersTab(ttk.Frame):
             "group": to_roman(current.salary_group) if 1 <= current.salary_group <= 25 else "",
             "years": current.seniority_years,
             "days": current.days_worked,
-            "contribution": str(current.contribution),
+            "contribution": contribution_label(current.contribution),
             "eligible": current.eligible,
         }
         worker = self._form("Editar trabajador", initial, current.id)
         if worker:
             self.app.ctl.update_worker(worker)
+            self.app.changed()
+
+    def _selected_ids(self) -> list[int]:
+        ids = [int(iid) for iid in self.tree.selection()]
+        if not ids:
+            messagebox.showinfo(
+                "Trabajadores", "Primero haga clic en uno o varios trabajadores de la lista.", parent=self
+            )
+        return ids
+
+    def grant_right(self) -> None:
+        ids = self._selected_ids()
+        if ids:
+            self.app.ctl.set_eligible(ids, True)
+            self.app.changed()
+
+    def revoke_right(self) -> None:
+        ids = self._selected_ids()
+        if ids:
+            self.app.ctl.set_eligible(ids, False)
             self.app.changed()
 
     def delete(self) -> None:
