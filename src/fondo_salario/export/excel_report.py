@@ -85,6 +85,7 @@ def _area_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> None:
         "Plazas vacantes",
         "Plazas temporalmente vacantes",
         "Total de vacantes",
+        "Vacantes a distribuir",
         "Salario de la plaza",
         "Meses inejecutados",
         "Monto inejecutado",
@@ -93,17 +94,19 @@ def _area_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> None:
     ]
     _title(ws, "Cálculo del monto por área", subtitle, len(labels))
     _header(ws, 4, labels)
-    money = (5, 7, 9)
+    money = (6, 8, 10)
     row = 5
     for area in result.areas:
         _row(
             ws,
             row,
-            [area.area.name, None, None, None, None, None, None, _money(area.unexecuted)]
+            [area.area.name]
+            + [None] * 7
+            + [_money(area.unexecuted)]
             + [_money(area.pct), _money(area.amount)],
             bold=True,
             fill=AREA_FILL,
-            money_cols=money + (8,),
+            money_cols=money + (9,),
         )
         row += 1
         for item in area.positions:
@@ -111,8 +114,8 @@ def _area_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> None:
             _row(
                 ws,
                 row,
-                [p.name, p.approved, p.vacant, p.temp_vacant, item.vacancies, _money(p.salary)]
-                + [p.months_unexecuted, _money(item.unexecuted), None, None],
+                [p.name, p.approved, p.vacant, p.temp_vacant, p.total_vacancies, item.vacancies]
+                + [_money(p.salary), p.months_unexecuted, _money(item.unexecuted), None, None],
                 money_cols=money,
             )
             row += 1
@@ -122,10 +125,10 @@ def _area_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> None:
         ws,
         row,
         ["TOTAL GENERAL"]
-        + [None] * 6
+        + [None] * 7
         + [_money(result.total_unexecuted), _money(pct_sum), _money(amount_sum)],
         bold=True,
-        money_cols=money + (8,),
+        money_cols=money + (9,),
     )
     ok = "OK" if result.areas and pct_sum == 100 else "REVISAR"
     ws.cell(
@@ -133,7 +136,7 @@ def _area_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> None:
         column=1,
         value=f"Comprobación: la suma de los porcentajes es {pct_sum:.2f} (debe ser 100.00) — {ok}",
     )
-    _finish(ws, [42, 11, 11, 14, 11, 14, 11, 16, 14, 18])
+    _finish(ws, [42, 11, 11, 14, 11, 13, 14, 11, 16, 14, 18])
 
 
 def _worker_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> None:

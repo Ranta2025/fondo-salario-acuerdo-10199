@@ -1,6 +1,8 @@
 """Best-effort import of areas and positions from the legacy "Dist.Monto x area" sheet.
 
-Layout: column B = area number, C = name, D = approved slots, E = salary, G = months unexecuted.
+Layout: column B = area number, C = name, D = vacant slots (the count multiplied by salary and months
+to get the unexecuted amount; the legacy header says "approved" but it is only filled for vacant positions),
+E = salary, G = months unexecuted.
 Area header rows have a name like "3.- Departamento"; the rows below with the same number are positions.
 """
 
@@ -21,7 +23,7 @@ AREA_HEADER = re.compile(r"^\s*(\d+)\s*[.\-]")
 @dataclass
 class PositionRow:
     name: str
-    approved: int = 0
+    vacant: int = 0
     salary: Decimal = Decimal(0)
     months_unexecuted: int = 0
 
@@ -59,7 +61,7 @@ def read_structure(path: str | Path, sheet: str | None = None) -> list[AreaRow]:
         areas: list[AreaRow] = []
         by_number: dict[int, AreaRow] = {}
         for row in worksheet.iter_rows(min_col=2, max_col=7, values_only=True):
-            number_cell, name_cell, approved, salary, _, months = row
+            number_cell, name_cell, vacant, salary, _, months = row
             if not isinstance(number_cell, (int, float)) or not name_cell:
                 continue
             number, name = int(number_cell), str(name_cell).strip()
@@ -74,7 +76,7 @@ def read_structure(path: str | Path, sheet: str | None = None) -> list[AreaRow]:
                 area.positions.append(
                     PositionRow(
                         name,
-                        int(_number(approved)),
+                        int(_number(vacant)),
                         _number(salary),
                         int(_number(months)),
                     )

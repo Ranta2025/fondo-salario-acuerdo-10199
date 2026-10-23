@@ -97,7 +97,7 @@ class Controller:
             existing.add(_normalize_header(row.name))
             for p in row.positions:
                 self._store.add_position(
-                    Position(0, area.id, p.name, p.approved, 0, 0, p.salary, p.months_unexecuted)
+                    Position(0, area.id, p.name, p.vacant, p.vacant, 0, p.salary, p.months_unexecuted)
                 )
             added += 1
         self.refresh()
@@ -152,3 +152,21 @@ def parse_money(text: str) -> Decimal:
     else:
         cleaned = cleaned.replace(",", ".")
     return Decimal(cleaned)
+
+
+def resolve_distribute(text: str, total_vacancies: int) -> int | None:
+    """Blank or equal to the total means «all vacancies» (stored as None)."""
+    cleaned = text.strip()
+    if not cleaned:
+        return None
+    try:
+        number = int(cleaned)
+    except ValueError:
+        raise ValueError("«Vacantes a distribuir» debe ser un número entero.") from None
+    if number < 0:
+        raise ValueError("«Vacantes a distribuir» no puede ser negativo.")
+    if number > total_vacancies:
+        raise ValueError(
+            f"«Vacantes a distribuir» no puede ser mayor que las vacantes que hay ({total_vacancies})."
+        )
+    return None if number == total_vacancies else number

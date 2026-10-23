@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fondo_salario.domain.models import Area, Position, Settings, Worker
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE settings (
@@ -38,7 +38,8 @@ CREATE TABLE positions (
     vacant INTEGER NOT NULL,
     temp_vacant INTEGER NOT NULL,
     salary TEXT NOT NULL,
-    months_unexecuted INTEGER NOT NULL
+    months_unexecuted INTEGER NOT NULL,
+    distribute INTEGER
 );
 CREATE TABLE workers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,6 +77,10 @@ class ProjectStore:
         if version > SCHEMA_VERSION:
             self._conn.close()
             raise ValueError("this project was created by a newer version of the application")
+        if version == 1:
+            self._conn.execute("ALTER TABLE positions ADD COLUMN distribute INTEGER")
+            self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            self._conn.commit()
         if version == 0:
             self._conn.executescript(SCHEMA)
             self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -133,6 +138,7 @@ class ProjectStore:
                 r["temp_vacant"],
                 Decimal(r["salary"]),
                 r["months_unexecuted"],
+                r["distribute"],
             )
             for r in c.execute("SELECT * FROM positions ORDER BY id")
         ]
@@ -195,17 +201,8 @@ class ProjectStore:
     # -- positions ---------------------------------------------------------
     def add_position(self, p: Position) -> Position:
         cur = self._conn.execute(
-            "INSERT INTO positions (area_id, name, approved, vacant, temp_vacant, salary, months_unexecuted)"
-            " VALUES (?,?,?,?,?,?,?)",
-            (p.area_id, p.name, p.approved, p.vacant, p.temp_vacant, str(p.salary), p.months_unexecuted),
-        )
-        self._conn.commit()
-        return replace(p, id=cur.lastrowid)
-
-    def update_position(self, p: Position) -> None:
-        self._conn.execute(
-            "UPDATE positions SET area_id=?, name=?, approved=?, vacant=?, temp_vacant=?, salary=?,"
-            " months_unexecuted=? WHERE id=?",
+            "INSERT INTO positions (area_id, name, approved, vacant, temp_vacant, salary,"
+            " months_unexecuted, distribute) VALUES (?,?,?,?,?,?,?,?)",
             (
                 p.area_id,
                 p.name,
@@ -214,6 +211,25 @@ class ProjectStore:
                 p.temp_vacant,
                 str(p.salary),
                 p.months_unexecuted,
+                p.distribute,
+            ),
+        )
+        self._conn.commit()
+        return replace(p, id=cur.lastrowid)
+
+    def update_position(self, p: Position) -> None:
+        self._conn.execute(
+            "UPDATE positions SET area_id=?, name=?, approved=?, vacant=?, temp_vacant=?, salary=?,"
+            " months_unexecuted=?, distribute=? WHERE id=?",
+            (
+                p.area_id,
+                p.name,
+                p.approved,
+                p.vacant,
+                p.temp_vacant,
+                str(p.salary),
+                p.months_unexecuted,
+                p.distribute,
                 p.id,
             ),
         )

@@ -120,7 +120,16 @@ def calculate(
     for position in positions:
         if position.area_id not in area_positions:
             continue
-        vacancies = position.vacant + position.temp_vacant
+        vacancies = position.to_distribute
+        if position.distribute is not None and position.distribute > position.total_vacancies:
+            issues.append(
+                Issue(
+                    "distribute_exceeds",
+                    f"{position.name}: distributing {position.distribute} of "
+                    f"{position.total_vacancies} vacancies",
+                    position.name,
+                )
+            )
         unexecuted = Decimal(vacancies) * position.salary * position.months_unexecuted
         area_positions[position.area_id].append(PositionResult(position, vacancies, unexecuted))
     area_unexecuted = [sum((p.unexecuted for p in area_positions[a.id]), Decimal(0)) for a in areas]

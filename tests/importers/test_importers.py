@@ -82,14 +82,14 @@ def test_legacy_structure_layout(tmp_path):
     areas = read_structure(path)
     assert [a.name for a in areas] == ["Direccion", "Grupo de Atencion"]
     sub = areas[0].positions[0]
-    assert (sub.name, sub.approved, sub.salary, sub.months_unexecuted) == (
+    assert (sub.name, sub.vacant, sub.salary, sub.months_unexecuted) == (
         "SubDirector",
         1,
         Decimal(6310),
         3,
     )
     assert [p.name for p in areas[0].positions] == ["SubDirector", "Secretaria"]
-    assert areas[1].positions[0].approved == 4
+    assert areas[1].positions[0].vacant == 4
 
 
 def test_csv_saved_by_excel_on_windows_cp1252(tmp_path):

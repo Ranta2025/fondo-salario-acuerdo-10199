@@ -168,3 +168,30 @@ def test_time_evaluation_scales_with_months_paid(org):
     areas, positions = org
     result = calculate(settings(months=2), areas, positions, [worker(1, 1, days_worked=48)])
     assert result.workers[0].time_score == 5
+
+
+# --- vacancies to distribute -------------------------------------------------
+def _one_position(distribute):
+    areas = [Area(1, "A", 1)]
+    positions = [Position(1, 1, "p", 5, 3, 1, D("1000"), 3, distribute=distribute)]
+    return areas, positions
+
+
+def test_only_the_vacancies_to_distribute_count():
+    areas, positions = _one_position(distribute=2)
+    result = calculate(settings(), areas, positions, [worker(1, 1)])
+    assert result.areas[0].positions[0].vacancies == 2
+    assert result.areas[0].unexecuted == D("6000")  # 2 * 1000 * 3, not 4 vacancies
+
+
+def test_distribute_none_means_all_vacancies():
+    areas, positions = _one_position(distribute=None)
+    result = calculate(settings(), areas, positions, [worker(1, 1)])
+    assert result.areas[0].unexecuted == D("12000")  # (3 + 1) * 1000 * 3
+
+
+def test_distribute_above_total_vacancies_is_clamped_and_reported():
+    areas, positions = _one_position(distribute=9)
+    result = calculate(settings(), areas, positions, [worker(1, 1)])
+    assert result.areas[0].unexecuted == D("12000")
+    assert any(i.code == "distribute_exceeds" for i in result.issues)

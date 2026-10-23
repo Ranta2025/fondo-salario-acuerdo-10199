@@ -13,7 +13,7 @@ from fondo_salario.importers.structure import read_structure
 from fondo_salario.importers.workers import parse_roman, read_workers
 from fondo_salario.messages import describe
 from fondo_salario.persistence.sqlite_repo import AreaInUseError, ProjectStore
-from fondo_salario.ui.controller import Controller, parse_money
+from fondo_salario.ui.controller import Controller, parse_money, resolve_distribute
 from fondo_salario.ui.forms import Field, ask_form
 
 APP_TITLE = "Fondo de salario — Acuerdo 10199/2025"
@@ -172,6 +172,7 @@ class StructureTab(ttk.Frame):
             ("approved", "Plazas aprobadas", 90),
             ("vacant", "Vacantes", 70),
             ("temp", "Temp. vacantes", 90),
+            ("distribute", "A distribuir", 90),
             ("salary", "Salario", 90),
             ("months", "Meses inejecutados", 110),
             ("unexecuted", "Monto inejecutado", 120),
@@ -187,7 +188,7 @@ class StructureTab(ttk.Frame):
         for area in project.areas:
             self.tree.insert("", "end", iid=f"a{area.id}", text=area.name, open=True)
         for p in project.positions:
-            unexecuted = (p.vacant + p.temp_vacant) * p.salary * p.months_unexecuted
+            unexecuted = p.to_distribute * p.salary * p.months_unexecuted
             self.tree.insert(
                 f"a{p.area_id}",
                 "end",
@@ -197,6 +198,7 @@ class StructureTab(ttk.Frame):
                     p.approved,
                     p.vacant,
                     p.temp_vacant,
+                    p.to_distribute,
                     money_text(p.salary),
                     p.months_unexecuted,
                     money_text(unexecuted),
@@ -242,6 +244,7 @@ class StructureTab(ttk.Frame):
             Field("approved", "Plazas aprobadas"),
             Field("vacant", "Plazas vacantes"),
             Field("temp_vacant", "Plazas temporalmente vacantes"),
+            Field("distribute", "Vacantes a distribuir (vacío = todas)"),
             Field("salary", "Salario de la plaza"),
             Field("months", "Meses inejecutados"),
         ]
@@ -249,15 +252,18 @@ class StructureTab(ttk.Frame):
         def build(v: dict) -> Position:
             if not v["name"].strip():
                 raise ValueError("El nombre del cargo es obligatorio.")
+            vacant = parse_int(v["vacant"], "Plazas vacantes", 0, 10_000)
+            temp_vacant = parse_int(v["temp_vacant"], "Plazas temporalmente vacantes", 0, 10_000)
             return Position(
                 position_id,
                 area_id,
                 v["name"].strip(),
                 parse_int(v["approved"], "Plazas aprobadas", 0, 10_000),
-                parse_int(v["vacant"], "Plazas vacantes", 0, 10_000),
-                parse_int(v["temp_vacant"], "Plazas temporalmente vacantes", 0, 10_000),
+                vacant,
+                temp_vacant,
                 parse_decimal(v["salary"], "Salario de la plaza"),
                 parse_int(v["months"], "Meses inejecutados", 0, 12),
+                resolve_distribute(v["distribute"], vacant + temp_vacant),
             )
 
         return ask_form(self, title, fields, initial, build)
@@ -270,7 +276,7 @@ class StructureTab(ttk.Frame):
         months = self.app.ctl.project.settings.months_paid
         position = self._position_form(
             "Agregar cargo",
-            {"approved": 1, "vacant": 0, "temp_vacant": 0, "salary": "0", "months": months},
+            {"approved": 1, "vacant": 0, "temp_vacant": 0, "distribute": "", "salary": "0", "months": months},
             area_id,
         )
         if position:
@@ -287,6 +293,7 @@ class StructureTab(ttk.Frame):
             "approved": current.approved,
             "vacant": current.vacant,
             "temp_vacant": current.temp_vacant,
+            "distribute": "" if current.distribute is None else current.distribute,
             "salary": current.salary,
             "months": current.months_unexecuted,
         }

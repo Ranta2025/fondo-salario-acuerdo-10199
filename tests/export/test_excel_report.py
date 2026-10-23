@@ -56,7 +56,7 @@ def test_hoja1_percentages_and_total(tmp_path):
     ws = wb["Hoja 1 - Montos por área"]
     rows = list(ws.iter_rows(values_only=True))
     grand = next(r for r in rows if r[0] == "TOTAL GENERAL")
-    assert grand[8] == 100.0 and grand[9] == 1000.0
+    assert grand[9] == 100.0 and grand[10] == 1000.0
     assert any("OK" in str(r[0]) for r in rows if r[0] and "100" in str(r[0]))
 
 
@@ -79,3 +79,12 @@ def test_print_setup(tmp_path):
     wb, _ = build(tmp_path)
     ws = wb["Pre-nómina"]
     assert ws.page_setup.orientation == "landscape" and ws.page_setup.fitToWidth == 1
+
+
+def test_hoja1_shows_vacancies_to_distribute(tmp_path):
+    wb, _ = build(tmp_path)
+    rows = list(wb["Hoja 1 - Montos por área"].iter_rows(values_only=True))
+    header = next(r for r in rows if r[0] == "Relación de cargos por áreas")
+    assert header[4] == "Total de vacantes" and header[5] == "Vacantes a distribuir"
+    tecnico = next(r for r in rows if r[0] == "Tecnico")
+    assert (tecnico[4], tecnico[5]) == (2, 2)

@@ -13,6 +13,14 @@ Route: inline (user asked the parent to implement everything); each task verifie
 - [x] T5 tkinter UI (presenters tested without display) + manual smoke run — controller tests (71 total) + Xvfb smoke run: tabs refresh, totals match, dialogs open
 - [x] T6 README (Spanish user guide), PyInstaller notes, final verification — clean-venv install: 71 tests pass, ruff clean, no personal data tracked
 
+## Iteration 2 (user feedback after testing on the target Windows PC)
+Users are elderly: big fonts/buttons, simple flow. Local test env: `.venv` + Xvfb screenshots (+ wine available).
+- [x] T7 "Vacantes a distribuir" per position (None = all vacancies) in domain, SQLite v2 migration, Excel, UI form; fix legacy structure import (column D = vacancies used for the amount, was imported as approved with 0 vacancies -> nothing distributed) — 84 tests pass; real legacy file now yields unexecuted 320,220, percentages sum 100
+- [ ] T8 Explicit save model: changes pending until Guardar; ask to save on close; unsaved indicator
+- [ ] T9 UI redesign for elderly users: larger fonts, visible toolbar (Nuevo/Abrir/Guardar/Exportar) while keeping the Archivo menu, work-oriented layout, status bar
+- [ ] T10 Import workers from the legacy "Dist.Monto x Trabajador" sheet (name, area, years, days, contribution, roman group when present); undefined group imported as 0 and flagged
+- [ ] T11 Release the new Windows build (needs user OK for the tag)
+
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
 - Pre-nomina lists every worker, 0.00 for non-paid.

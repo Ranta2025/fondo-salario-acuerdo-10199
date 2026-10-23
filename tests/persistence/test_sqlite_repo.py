@@ -90,7 +90,7 @@ def test_reopen_persists_data_and_sets_schema_version(tmp_path):
         s.add_area("A")
     with ProjectStore(path) as s:
         assert [a.name for a in s.load().areas] == ["A"]
-        assert s.schema_version == 1
+        assert s.schema_version == 2
 
 
 def test_rejects_file_from_newer_version(tmp_path):
@@ -112,3 +112,44 @@ def test_backup_copy_is_an_independent_project(store, tmp_path):
     store.add_area("B")
     with ProjectStore(copy) as other:
         assert [a.name for a in other.load().areas] == ["A"]
+
+
+def test_position_distribute_roundtrip(store):
+    area = store.add_area("A")
+    a = store.add_position(Position(0, area.id, "a", 5, 3, 1, D("1"), 1, distribute=2))
+    b = store.add_position(Position(0, area.id, "b", 5, 3, 1, D("1"), 1))
+    loaded = {p.id: p for p in store.load().positions}
+    assert loaded[a.id].distribute == 2 and loaded[b.id].distribute is None
+
+
+def test_migrates_version_1_projects(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.fsal"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK (id = 1), total_amount TEXT NOT NULL,
+            months_paid INTEGER NOT NULL, expected_days_per_month INTEGER NOT NULL,
+            weight_time TEXT NOT NULL, weight_responsibility TEXT NOT NULL, weight_seniority TEXT NOT NULL,
+            weight_contribution TEXT NOT NULL, responsibility_bands TEXT NOT NULL, seniority_bands TEXT NOT NULL);
+        CREATE TABLE areas (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, sort_order INTEGER NOT NULL);
+        CREATE TABLE positions (id INTEGER PRIMARY KEY AUTOINCREMENT, area_id INTEGER NOT NULL,
+            name TEXT NOT NULL, approved INTEGER NOT NULL, vacant INTEGER NOT NULL, temp_vacant INTEGER NOT NULL,
+            salary TEXT NOT NULL, months_unexecuted INTEGER NOT NULL);
+        CREATE TABLE workers (id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL,
+            national_id TEXT NOT NULL, area_id INTEGER NOT NULL, position_name TEXT NOT NULL,
+            salary_group INTEGER NOT NULL, seniority_years INTEGER NOT NULL, days_worked INTEGER NOT NULL,
+            contribution INTEGER NOT NULL, eligible INTEGER NOT NULL);
+        INSERT INTO settings VALUES (1,'10',3,24,'0.40','0.25','0.15','0.20','[[1,1]]','[[0,1]]');
+        INSERT INTO areas (name, sort_order) VALUES ('A', 1);
+        INSERT INTO positions (area_id, name, approved, vacant, temp_vacant, salary, months_unexecuted)
+            VALUES (1, 'p', 2, 1, 0, '100', 3);
+        PRAGMA user_version = 1;
+        """
+    )
+    conn.commit()
+    conn.close()
+    with ProjectStore(path) as s:
+        assert s.schema_version == 2
+        assert s.load().positions[0].distribute is None

@@ -28,7 +28,7 @@ def test_import_structure_creates_areas_and_skips_existing(ctl):
     assert ctl.import_structure(data) == 0
     project = ctl.project
     assert [a.name for a in project.areas] == ["Dir", "Eco"]
-    assert project.positions[0].approved == 1 and project.positions[0].vacant == 0
+    assert project.positions[0].vacant == 1 and project.positions[0].distribute is None
 
 
 def test_import_workers_matches_area_ignoring_case_and_accents(ctl):
@@ -80,3 +80,22 @@ def test_parse_money(text, expected):
     from fondo_salario.ui.controller import parse_money
 
     assert parse_money(text) == D(expected)
+
+
+@pytest.mark.parametrize(
+    "text,total,expected",
+    [("", 4, None), ("  ", 4, None), ("4", 4, None), ("2", 4, 2), ("0", 4, 0)],
+)
+def test_resolve_distribute(text, total, expected):
+    from fondo_salario.ui.controller import resolve_distribute
+
+    assert resolve_distribute(text, total) == expected
+
+
+def test_resolve_distribute_rejects_more_than_available():
+    from fondo_salario.ui.controller import resolve_distribute
+
+    with pytest.raises(ValueError, match="no puede ser mayor"):
+        resolve_distribute("5", 4)
+    with pytest.raises(ValueError):
+        resolve_distribute("x", 4)

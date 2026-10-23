@@ -46,6 +46,17 @@ class Position:
     temp_vacant: int
     salary: Decimal
     months_unexecuted: int
+    distribute: int | None = None  # vacancies to distribute; None = all of them
+
+    @property
+    def total_vacancies(self) -> int:
+        return self.vacant + self.temp_vacant
+
+    @property
+    def to_distribute(self) -> int:
+        if self.distribute is None:
+            return self.total_vacancies
+        return min(self.distribute, self.total_vacancies)
 
 
 @dataclass(frozen=True)
