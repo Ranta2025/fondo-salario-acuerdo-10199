@@ -153,3 +153,38 @@ def test_migrates_version_1_projects(tmp_path):
     with ProjectStore(path) as s:
         assert s.schema_version == 2
         assert s.load().positions[0].distribute is None
+
+
+# --- explicit save model ----------------------------------------------------
+def test_deferred_changes_need_save(tmp_path):
+    path = tmp_path / "d.fsal"
+    with ProjectStore(path, autosave=False) as s:
+        assert s.dirty is False
+        s.add_area("A")
+        assert s.dirty is True
+        with ProjectStore(path) as other:  # another reader sees nothing yet
+            assert other.load().areas == []
+        s.save()
+        assert s.dirty is False
+    with ProjectStore(path) as again:
+        assert [a.name for a in again.load().areas] == ["A"]
+
+
+def test_discard_rolls_back_pending_changes(tmp_path):
+    path = tmp_path / "d.fsal"
+    with ProjectStore(path, autosave=False) as s:
+        s.add_area("kept")
+        s.save()
+        s.add_area("dropped")
+        s.discard()
+        assert [a.name for a in s.load().areas] == ["kept"]
+        assert s.dirty is False
+
+
+def test_backup_includes_pending_changes(tmp_path):
+    with ProjectStore(tmp_path / "d.fsal", autosave=False) as s:
+        s.add_area("pending")
+        s.backup_to(tmp_path / "copy.fsal")
+        assert s.dirty is False  # the copy saved the project first
+    with ProjectStore(tmp_path / "copy.fsal") as c:
+        assert [a.name for a in c.load().areas] == ["pending"]

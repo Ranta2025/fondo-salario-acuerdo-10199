@@ -28,6 +28,17 @@ class Controller:
         self._store = store
         self.project: Project = store.load()
 
+    @property
+    def dirty(self) -> bool:
+        return self._store.dirty
+
+    def save(self) -> None:
+        self._store.save()
+
+    def discard(self) -> None:
+        self._store.discard()
+        self.refresh()
+
     def refresh(self) -> Project:
         self.project = self._store.load()
         return self.project

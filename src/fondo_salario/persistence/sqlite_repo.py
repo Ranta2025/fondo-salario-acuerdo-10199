@@ -69,7 +69,9 @@ class Project:
 
 
 class ProjectStore:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, autosave: bool = True):
+        self._autosave = autosave
+        self._dirty = False
         self._conn = sqlite3.connect(str(path))
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
@@ -93,12 +95,33 @@ class ProjectStore:
         return self._conn.execute("PRAGMA user_version").fetchone()[0]
 
     def backup_to(self, path: str | Path) -> None:
-        """Write a consistent copy of the whole project to `path`."""
+        """Save pending changes and write a consistent copy of the whole project to `path`."""
+        if self._dirty:
+            self.save()  # SQLite cannot back up from a connection with an open write transaction
         destination = sqlite3.connect(str(path))
         try:
             self._conn.backup(destination)
         finally:
             destination.close()
+
+    @property
+    def dirty(self) -> bool:
+        """True when there are changes that were not saved yet (only with autosave=False)."""
+        return self._dirty
+
+    def save(self) -> None:
+        self._conn.commit()
+        self._dirty = False
+
+    def discard(self) -> None:
+        self._conn.rollback()
+        self._dirty = False
+
+    def _changed(self) -> None:
+        if self._autosave:
+            self._conn.commit()
+        else:
+            self._dirty = True
 
     def close(self) -> None:
         self._conn.close()
@@ -162,7 +185,7 @@ class ProjectStore:
     # -- settings ----------------------------------------------------------
     def save_settings(self, settings: Settings) -> None:
         self._write_settings(settings)
-        self._conn.commit()
+        self._changed()
 
     def _write_settings(self, s: Settings) -> None:
         self._conn.execute(
@@ -184,19 +207,19 @@ class ProjectStore:
     def add_area(self, name: str) -> Area:
         order = self._conn.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM areas").fetchone()[0]
         cur = self._conn.execute("INSERT INTO areas (name, sort_order) VALUES (?, ?)", (name, order))
-        self._conn.commit()
+        self._changed()
         return Area(cur.lastrowid, name, order)
 
     def rename_area(self, area_id: int, name: str) -> None:
         self._conn.execute("UPDATE areas SET name = ? WHERE id = ?", (name, area_id))
-        self._conn.commit()
+        self._changed()
 
     def delete_area(self, area_id: int) -> None:
         count = self._conn.execute("SELECT COUNT(*) FROM workers WHERE area_id = ?", (area_id,)).fetchone()[0]
         if count:
             raise AreaInUseError(f"the area still has {count} worker(s)")
         self._conn.execute("DELETE FROM areas WHERE id = ?", (area_id,))
-        self._conn.commit()
+        self._changed()
 
     # -- positions ---------------------------------------------------------
     def add_position(self, p: Position) -> Position:
@@ -214,7 +237,7 @@ class ProjectStore:
                 p.distribute,
             ),
         )
-        self._conn.commit()
+        self._changed()
         return replace(p, id=cur.lastrowid)
 
     def update_position(self, p: Position) -> None:
@@ -233,11 +256,11 @@ class ProjectStore:
                 p.id,
             ),
         )
-        self._conn.commit()
+        self._changed()
 
     def delete_position(self, position_id: int) -> None:
         self._conn.execute("DELETE FROM positions WHERE id = ?", (position_id,))
-        self._conn.commit()
+        self._changed()
 
     # -- workers -----------------------------------------------------------
     def add_worker(self, w: Worker) -> Worker:
@@ -246,7 +269,7 @@ class ProjectStore:
             " seniority_years, days_worked, contribution, eligible) VALUES (?,?,?,?,?,?,?,?,?)",
             _worker_values(w),
         )
-        self._conn.commit()
+        self._changed()
         return replace(w, id=cur.lastrowid)
 
     def update_worker(self, w: Worker) -> None:
@@ -255,11 +278,11 @@ class ProjectStore:
             " seniority_years=?, days_worked=?, contribution=?, eligible=? WHERE id=?",
             (*_worker_values(w), w.id),
         )
-        self._conn.commit()
+        self._changed()
 
     def delete_worker(self, worker_id: int) -> None:
         self._conn.execute("DELETE FROM workers WHERE id = ?", (worker_id,))
-        self._conn.commit()
+        self._changed()
 
 
 def _worker_values(w: Worker) -> tuple:

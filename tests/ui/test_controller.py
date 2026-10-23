@@ -99,3 +99,16 @@ def test_resolve_distribute_rejects_more_than_available():
         resolve_distribute("5", 4)
     with pytest.raises(ValueError):
         resolve_distribute("x", 4)
+
+
+def test_controller_tracks_unsaved_changes(tmp_path):
+    with ProjectStore(tmp_path / "p.fsal", autosave=False) as store:
+        c = Controller(store)
+        assert c.dirty is False
+        c.add_area("Dir")
+        assert c.dirty is True
+        c.save()
+        assert c.dirty is False
+        c.add_area("Eco")
+        c.discard()
+        assert [a.name for a in c.project.areas] == ["Dir"] and c.dirty is False
