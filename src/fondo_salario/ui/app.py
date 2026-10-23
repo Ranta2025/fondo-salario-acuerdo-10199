@@ -1,11 +1,13 @@
-"""Main window (tkinter). All user-facing text is Spanish."""
+"""Main window (tkinter). All user-facing text is Spanish; the layout targets older, non-technical users."""
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from tkinter import font as tkfont
 
 from fondo_salario.domain.models import Position, Settings, Worker
 from fondo_salario.export.excel_report import to_roman
@@ -19,10 +21,21 @@ from fondo_salario.ui.forms import Field, ask_form
 APP_TITLE = "Fondo de salario — Acuerdo 10199/2025"
 FILETYPES = [("Proyecto de fondo de salario", "*.fsal")]
 ROMANS = [to_roman(n) for n in range(1, 26)]
+FONT_SIZE = 12
+
+COLOR_STRIPE = "#eef2f7"
+COLOR_AREA = "#d9e2ef"
+COLOR_OK = "#1b6e2d"
+COLOR_WARN = "#b00020"
+COLOR_HINT = "#4a4a4a"
 
 
 def money_text(value: Decimal) -> str:
     return f"{value:,.2f}"
+
+
+def group_text(group: int) -> str:
+    return to_roman(group) if 1 <= group <= 25 else "—"
 
 
 def parse_int(text: str, label: str, low: int, high: int) -> int:
@@ -62,9 +75,50 @@ def parse_bands(text: str, label: str):
     return tuple(pairs)
 
 
-def make_tree(parent, columns: list[tuple[str, str, int]], **kwargs) -> ttk.Treeview:
+# -- look and feel ----------------------------------------------------------------------
+def apply_style(root: tk.Tk) -> None:
+    """Bigger fonts, taller rows and roomy buttons so everything is easy to read and to click."""
+    for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkCaptionFont"):
+        tkfont.nametofont(name).configure(size=FONT_SIZE)
+    style = ttk.Style(root)
+    if sys.platform != "win32" and "clam" in style.theme_names():
+        style.theme_use("clam")
+    family = tkfont.nametofont("TkDefaultFont").actual("family")
+    bold = (family, FONT_SIZE, "bold")
+    style.configure("Treeview", rowheight=36)
+    style.configure("Treeview.Heading", font=bold, padding=(6, 8))
+    style.configure("Compact.Treeview", rowheight=30)
+    style.configure("Compact.Treeview.Heading", font=bold, padding=(6, 6))
+    style.configure("TButton", padding=(14, 9))
+    style.configure("Primary.TButton", font=bold, padding=(18, 10))
+    style.configure("Toolbar.TButton", font=bold, padding=(16, 10))
+    style.configure("TNotebook.Tab", font=bold, padding=(24, 12))
+    style.configure("TEntry", padding=5)
+    style.configure("TCombobox", padding=5)
+    style.configure("Title.TLabel", font=(family, FONT_SIZE + 4, "bold"))
+    style.configure("Hint.TLabel", foreground=COLOR_HINT)
+    style.configure("Status.TLabel", padding=(10, 6))
+    style.configure("Big.TLabel", font=(family, FONT_SIZE + 2, "bold"))
+    root.option_add("*TCombobox*Listbox.font", (family, FONT_SIZE))
+
+
+def hint(parent, text: str) -> ttk.Label:
+    label = ttk.Label(parent, text=text, style="Hint.TLabel", wraplength=1000, justify="left")
+    label.pack(fill="x", pady=(0, 10))
+    return label
+
+
+def button_bar(parent, buttons: list[tuple[str, object]]) -> ttk.Frame:
+    bar = ttk.Frame(parent)
+    bar.pack(fill="x", pady=(0, 10))
+    for text, command in buttons:
+        ttk.Button(bar, text=text, command=command).pack(side="left", padx=(0, 8))
+    return bar
+
+
+def make_tree(parent, columns: list[tuple[str, str, int]], expand: bool = True, **kwargs) -> ttk.Treeview:
     frame = ttk.Frame(parent)
-    frame.pack(fill="both", expand=True)
+    frame.pack(fill="both", expand=expand, pady=(0, 0 if expand else 8))
     tree = ttk.Treeview(frame, columns=[c[0] for c in columns], **kwargs)
     for key, title, width in columns:
         tree.heading(key, text=title)
@@ -73,44 +127,82 @@ def make_tree(parent, columns: list[tuple[str, str, int]], **kwargs) -> ttk.Tree
     tree.configure(yscrollcommand=scroll.set)
     tree.pack(side="left", fill="both", expand=True)
     scroll.pack(side="right", fill="y")
+    tree.tag_configure("odd", background=COLOR_STRIPE)
+    tree.tag_configure("area", background=COLOR_AREA)
+    tree.tag_configure("zero", foreground="#777777")
     return tree
 
 
+def stripe(tree: ttk.Treeview) -> None:
+    """Alternate row shading for readability (area rows keep their own colour)."""
+    visible = 0
+
+    def walk(parent: str) -> None:
+        nonlocal visible
+        for iid in tree.get_children(parent):
+            tags = [t for t in tree.item(iid, "tags") if t != "odd"]
+            if "area" not in tags:
+                visible += 1
+                if visible % 2 == 0:
+                    tags.append("odd")
+            tree.item(iid, tags=tags)
+            walk(iid)
+
+    walk("")
+
+
 class ParametersTab(ttk.Frame):
+    FIELDS = [
+        ("total", "Monto real a distribuir"),
+        ("months", "Meses a pagar"),
+        ("days", "Días esperados por mes"),
+        ("w_time", "Peso: tiempo trabajado"),
+        ("w_resp", "Peso: responsabilidad"),
+        ("w_sen", "Peso: antigüedad"),
+        ("w_con", "Peso: contribución"),
+        ("b_resp", "Escala de responsabilidad (grupo desde:nota)"),
+        ("b_sen", "Escala de antigüedad (años desde:nota)"),
+    ]
+
     def __init__(self, app: App):
-        super().__init__(app.notebook, padding=16)
+        super().__init__(app.notebook, padding=20)
         self.app = app
+        self.edited = False
+        self._loading = False
+        ttk.Label(self, text="Paso 1: Parámetros del pago", style="Title.TLabel").pack(anchor="w")
+        hint(
+            self,
+            "Escriba el monto real que se va a repartir y los meses que se pagan. Los pesos y las escalas "
+            "ya vienen con valores habituales; cámbielos solo si su reglamento interno dice otra cosa.",
+        )
+        form = ttk.Frame(self)
+        form.pack(anchor="w")
         self.vars: dict[str, tk.StringVar] = {}
-        rows = [
-            ("total", "Monto real a distribuir"),
-            ("months", "Meses a pagar"),
-            ("days", "Días esperados por mes"),
-            ("w_time", "Peso: tiempo trabajado"),
-            ("w_resp", "Peso: responsabilidad"),
-            ("w_sen", "Peso: antigüedad"),
-            ("w_con", "Peso: contribución"),
-            ("b_resp", "Escala de responsabilidad (grupo desde:nota)"),
-            ("b_sen", "Escala de antigüedad (años desde:nota)"),
-        ]
-        for row, (key, label) in enumerate(rows):
-            ttk.Label(self, text=label).grid(row=row, column=0, sticky="w", pady=4, padx=(0, 12))
+        for row, (key, label) in enumerate(self.FIELDS):
+            ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", pady=6, padx=(0, 16))
             self.vars[key] = tk.StringVar()
-            ttk.Entry(self, textvariable=self.vars[key], width=44).grid(row=row, column=1, sticky="w")
-        self.status = ttk.Label(self, text="")
-        self.status.grid(row=len(rows), column=0, columnspan=2, sticky="w", pady=(8, 0))
-        ttk.Button(self, text="Guardar parámetros", command=self.save).grid(
-            row=len(rows) + 1, column=0, sticky="w", pady=12
-        )
-        note = (
-            "El Acuerdo 10199 no fija los criterios de reparto: "
-            "cada unidad los aprueba en su reglamento interno.\n"
-            "Los pesos deben sumar 1.00. Las escalas dicen desde qué valor se obtiene cada nota (1 a 5)."
-        )
-        ttk.Label(self, text=note, foreground="#555").grid(
-            row=len(rows) + 2, column=0, columnspan=2, sticky="w"
-        )
+            self.vars[key].trace_add("write", self._on_edit)
+            width = 50 if key.startswith("b_") else 18
+            ttk.Entry(form, textvariable=self.vars[key], width=width).grid(row=row, column=1, sticky="w")
+        self.status = ttk.Label(self, text="", style="Big.TLabel")
+        self.status.pack(anchor="w", pady=(14, 0))
+        ttk.Label(
+            self,
+            text="Los pesos deben sumar 1.00. Las escalas dicen desde qué valor se obtiene cada nota "
+            "(1 a 5). "
+            "Los cambios se aplican solos al cambiar de pestaña.",
+            style="Hint.TLabel",
+            wraplength=1000,
+        ).pack(anchor="w", pady=(6, 0))
+
+    def _on_edit(self, *_args) -> None:
+        if not self._loading:
+            self.edited = True
+            self.app.update_status()
 
     def refresh(self) -> None:
+        if self.edited:  # never overwrite what the user is typing
+            return
         s = self.app.ctl.project.settings
         values = {
             "total": f"{s.total_amount:.2f}",
@@ -123,11 +215,18 @@ class ParametersTab(ttk.Frame):
             "b_resp": bands_to_text(s.responsibility_bands),
             "b_sen": bands_to_text(s.seniority_bands),
         }
+        self._loading = True
         for key, value in values.items():
             self.vars[key].set(value)
-        self.status.configure(text="")
+        self._loading = False
+        total = s.weights_sum
+        self.status.configure(
+            text="" if total == 1 else f"⚠ Los pesos suman {total}; deben sumar 1.00",
+            foreground=COLOR_WARN,
+        )
 
-    def save(self) -> None:
+    def apply(self) -> bool:
+        """Validate and store the typed values; returns False (after telling the user) if invalid."""
         v = {key: var.get() for key, var in self.vars.items()}
         try:
             settings = Settings(
@@ -143,50 +242,60 @@ class ParametersTab(ttk.Frame):
             )
         except ValueError as error:
             messagebox.showerror("Parámetros", str(error), parent=self)
-            return
+            return False
         self.app.ctl.save_settings(settings)
-        total = settings.weights_sum
-        self.status.configure(
-            text=f"Guardado. Los pesos suman {total}" + ("" if total == 1 else "  ⚠ deben sumar 1.00"),
-            foreground="#000" if total == 1 else "#b00",
-        )
+        self.edited = False
+        self.refresh()
         self.app.changed()
+        return True
 
 
 class StructureTab(ttk.Frame):
     def __init__(self, app: App):
-        super().__init__(app.notebook, padding=8)
+        super().__init__(app.notebook, padding=20)
         self.app = app
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", pady=(0, 6))
-        for text, command in [
-            ("Nueva área", self.add_area),
-            ("Renombrar área", self.rename_area),
-            ("Agregar cargo", self.add_position),
-            ("Editar cargo", self.edit_position),
-            ("Eliminar", self.delete),
-            ("Importar desde Excel…", self.import_excel),
-        ]:
-            ttk.Button(bar, text=text, command=command).pack(side="left", padx=2)
+        ttk.Label(self, text="Paso 2: Áreas y cargos", style="Title.TLabel").pack(anchor="w")
+        hint(
+            self,
+            "Cree las áreas y, dentro de cada una, sus cargos. En cada cargo indique cuántas plazas están "
+            "vacantes y cuántas de esas vacantes se van a distribuir. "
+            "También puede importarlas desde su Excel anterior.",
+        )
+        button_bar(
+            self,
+            [
+                ("Nueva área", self.add_area),
+                ("Renombrar área", self.rename_area),
+                ("Agregar cargo", self.add_position),
+                ("Editar cargo", self.edit_position),
+                ("Eliminar", self.delete),
+                ("Importar desde Excel…", self.import_excel),
+            ],
+        )
         columns = [
-            ("approved", "Plazas aprobadas", 90),
-            ("vacant", "Vacantes", 70),
-            ("temp", "Temp. vacantes", 90),
-            ("distribute", "A distribuir", 90),
-            ("salary", "Salario", 90),
-            ("months", "Meses inejecutados", 110),
-            ("unexecuted", "Monto inejecutado", 120),
+            ("approved", "Aprobadas", 105),
+            ("vacant", "Vacantes", 100),
+            ("temp", "Temporales", 110),
+            ("distribute", "Vacantes a distribuir", 200),
+            ("salary", "Salario", 110),
+            ("months", "Meses", 90),
+            ("unexecuted", "Monto inejecutado", 180),
         ]
         self.tree = make_tree(self, columns, show="tree headings")
         self.tree.heading("#0", text="Área / cargo")
-        self.tree.column("#0", width=340)
+        self.tree.column("#0", width=300)
         self.tree.bind("<Double-1>", lambda _e: self.edit_position())
 
     def refresh(self) -> None:
+        open_areas = {iid for iid in self.tree.get_children() if self.tree.item(iid, "open")}
+        first_fill = not self.tree.get_children()
         self.tree.delete(*self.tree.get_children())
         project = self.app.ctl.project
         for area in project.areas:
-            self.tree.insert("", "end", iid=f"a{area.id}", text=area.name, open=True)
+            iid = f"a{area.id}"
+            self.tree.insert(
+                "", "end", iid=iid, text=area.name, tags=("area",), open=first_fill or iid in open_areas
+            )
         for p in project.positions:
             unexecuted = p.to_distribute * p.salary * p.months_unexecuted
             self.tree.insert(
@@ -204,11 +313,12 @@ class StructureTab(ttk.Frame):
                     money_text(unexecuted),
                 ),
             )
+        stripe(self.tree)
 
     def _selected(self) -> tuple[str, int] | None:
         selection = self.tree.selection()
         if not selection:
-            messagebox.showinfo("Áreas y cargos", "Selecciona primero un área o un cargo.", parent=self)
+            messagebox.showinfo("Áreas y cargos", "Primero haga clic en un área o en un cargo.", parent=self)
             return None
         return selection[0][0], int(selection[0][1:])
 
@@ -222,7 +332,10 @@ class StructureTab(ttk.Frame):
 
     def rename_area(self) -> None:
         picked = self._selected()
-        if not picked or picked[0] != "a":
+        if not picked:
+            return
+        if picked[0] != "a":
+            messagebox.showinfo("Renombrar", "Haga clic en el nombre de un área.", parent=self)
             return
         current = self.tree.item(f"a{picked[1]}", "text")
         name = ask_form(
@@ -266,7 +379,14 @@ class StructureTab(ttk.Frame):
                 resolve_distribute(v["distribute"], vacant + temp_vacant),
             )
 
-        return ask_form(self, title, fields, initial, build)
+        return ask_form(
+            self,
+            title,
+            fields,
+            initial,
+            build,
+            hint="Si hay 4 vacantes pero solo se reparten 2, escriba 2 en «Vacantes a distribuir».",
+        )
 
     def add_position(self) -> None:
         picked = self._selected()
@@ -276,7 +396,14 @@ class StructureTab(ttk.Frame):
         months = self.app.ctl.project.settings.months_paid
         position = self._position_form(
             "Agregar cargo",
-            {"approved": 1, "vacant": 0, "temp_vacant": 0, "distribute": "", "salary": "0", "months": months},
+            {
+                "approved": 1,
+                "vacant": 0,
+                "temp_vacant": 0,
+                "distribute": "",
+                "salary": "0",
+                "months": months,
+            },
             area_id,
         )
         if position:
@@ -285,7 +412,10 @@ class StructureTab(ttk.Frame):
 
     def edit_position(self) -> None:
         picked = self._selected()
-        if not picked or picked[0] != "p":
+        if not picked:
+            return
+        if picked[0] != "p":
+            messagebox.showinfo("Editar cargo", "Haga clic en un cargo (no en un área).", parent=self)
             return
         current = self.app.ctl.position(picked[1])
         initial = {
@@ -308,7 +438,7 @@ class StructureTab(ttk.Frame):
             return
         kind, item_id = picked
         label = self.tree.item(f"{kind}{item_id}", "text")
-        if not messagebox.askyesno("Eliminar", f"¿Eliminar «{label}»?", parent=self):
+        if not messagebox.askyesno("Eliminar", f"¿Seguro que desea eliminar «{label}»?", parent=self):
             return
         try:
             if kind == "a":
@@ -317,26 +447,33 @@ class StructureTab(ttk.Frame):
                 self.app.ctl.delete_position(item_id)
         except AreaInUseError:
             messagebox.showwarning(
-                "Eliminar", "El área todavía tiene trabajadores. Elimínalos o muévelos primero.", parent=self
+                "Eliminar",
+                "El área todavía tiene trabajadores. Elimínelos o cámbielos de área primero.",
+                parent=self,
             )
             return
         self.app.changed()
 
     def import_excel(self) -> None:
         path = filedialog.askopenfilename(
-            parent=self, title="Excel con la relación de áreas y cargos", filetypes=[("Excel", "*.xlsx")]
+            parent=self,
+            title="Excel con la relación de áreas y cargos",
+            filetypes=[("Excel", "*.xlsx")],
         )
         if not path:
             return
         try:
-            added = self.app.ctl.import_structure(read_structure(path))
+            areas = read_structure(path)
+            added = self.app.ctl.import_structure(areas)
         except Exception as error:  # unreadable or unexpected workbook
             messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
             return
+        positions = sum(len(a.positions) for a in areas)
         messagebox.showinfo(
             "Importar",
-            f"Áreas nuevas importadas: {added}.\n\n"
-            "Recuerda indicar en cada cargo cuántas plazas están vacantes.",
+            f"Se leyeron {len(areas)} áreas con {positions} cargos.\n"
+            f"Áreas nuevas agregadas: {added} (las que ya existían no se repiten).\n\n"
+            "Revise las vacantes de cada cargo.",
             parent=self,
         )
         self.app.changed()
@@ -356,40 +493,49 @@ class WorkersTab(ttk.Frame):
     ALL = "(Todas las áreas)"
 
     def __init__(self, app: App):
-        super().__init__(app.notebook, padding=8)
+        super().__init__(app.notebook, padding=20)
         self.app = app
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", pady=(0, 6))
-        for text, command in [
-            ("Agregar trabajador", self.add),
-            ("Editar", self.edit),
-            ("Eliminar", self.delete),
-            ("Importar CSV/Excel…", self.import_file),
-        ]:
-            ttk.Button(bar, text=text, command=command).pack(side="left", padx=2)
-        ttk.Label(bar, text="  Buscar:").pack(side="left")
+        ttk.Label(self, text="Paso 3: Trabajadores", style="Title.TLabel").pack(anchor="w")
+        hint(
+            self,
+            "Agregue a cada trabajador con sus datos. "
+            "Quite la marca de «Cobra» a quien no deba recibir pago.",
+        )
+        button_bar(
+            self,
+            [
+                ("Agregar trabajador", self.add),
+                ("Editar", self.edit),
+                ("Eliminar", self.delete),
+                ("Importar desde Excel/CSV…", self.import_file),
+            ],
+        )
+        filters = ttk.Frame(self)
+        filters.pack(fill="x", pady=(0, 8))
+        ttk.Label(filters, text="Buscar:").pack(side="left")
         self.search = tk.StringVar()
         self.search.trace_add("write", lambda *_: self.refresh())
-        ttk.Entry(bar, textvariable=self.search, width=22).pack(side="left", padx=4)
+        ttk.Entry(filters, textvariable=self.search, width=26).pack(side="left", padx=(6, 18))
+        ttk.Label(filters, text="Mostrar:").pack(side="left")
         self.area_filter = tk.StringVar(value=self.ALL)
-        self.combo = ttk.Combobox(bar, textvariable=self.area_filter, state="readonly", width=30)
-        self.combo.pack(side="left", padx=4)
+        self.combo = ttk.Combobox(filters, textvariable=self.area_filter, state="readonly", width=34)
+        self.combo.pack(side="left", padx=6)
         self.combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
         columns = [
             ("name", "Nombre y apellidos", 230),
-            ("ci", "Carné de identidad", 110),
-            ("area", "Área", 190),
-            ("position", "Cargo", 160),
-            ("group", "Grupo", 55),
-            ("years", "Antigüedad", 70),
-            ("days", "Días", 50),
-            ("contribution", "Contrib.", 60),
-            ("eligible", "Cobra", 50),
+            ("ci", "Carné de identidad", 185),
+            ("area", "Área", 260),
+            ("position", "Cargo", 140),
+            ("group", "Grupo", 80),
+            ("years", "Antigüedad", 125),
+            ("days", "Días", 70),
+            ("contribution", "Contrib.", 100),
+            ("eligible", "Cobra", 80),
         ]
         self.tree = make_tree(self, columns, show="headings")
         self.tree.bind("<Double-1>", lambda _e: self.edit())
-        self.count = ttk.Label(self, text="")
-        self.count.pack(anchor="w")
+        self.count = ttk.Label(self, text="", style="Hint.TLabel")
+        self.count.pack(anchor="w", pady=(6, 0))
 
     def refresh(self) -> None:
         project = self.app.ctl.project
@@ -417,20 +563,22 @@ class WorkersTab(ttk.Frame):
                     w.national_id,
                     area,
                     w.position_name,
-                    to_roman(w.salary_group),
+                    group_text(w.salary_group),
                     w.seniority_years,
                     w.days_worked,
                     w.contribution,
                     "Sí" if w.eligible else "No",
                 ),
+                tags=() if w.eligible else ("zero",),
             )
-        self.count.configure(text=f"{shown} de {len(project.workers)} trabajadores")
+        stripe(self.tree)
+        self.count.configure(text=f"Mostrando {shown} de {len(project.workers)} trabajadores")
 
     def _form(self, title: str, initial: dict, worker_id: int = 0) -> Worker | None:
         areas = {a.name: a.id for a in self.app.ctl.project.areas}
         if not areas:
             messagebox.showinfo(
-                "Trabajadores", "Primero crea al menos un área en «Áreas y cargos».", parent=self
+                "Trabajadores", "Primero cree al menos un área en el Paso 2 (Áreas y cargos).", parent=self
             )
             return None
         fields = [
@@ -449,10 +597,10 @@ class WorkersTab(ttk.Frame):
             if not v["name"].strip():
                 raise ValueError("El nombre es obligatorio.")
             if v["area"] not in areas:
-                raise ValueError("Selecciona un área.")
+                raise ValueError("Seleccione el área.")
             group = parse_roman(v["group"])
             if group is None:
-                raise ValueError("Selecciona el grupo salarial.")
+                raise ValueError("Seleccione el grupo salarial.")
             return Worker(
                 id=worker_id,
                 full_name=v["name"].strip(),
@@ -481,19 +629,26 @@ class WorkersTab(ttk.Frame):
             self.app.ctl.add_worker(worker)
             self.app.changed()
 
-    def edit(self) -> None:
+    def _selected_worker(self) -> Worker | None:
         selection = self.tree.selection()
         if not selection:
-            messagebox.showinfo("Trabajadores", "Selecciona primero un trabajador.", parent=self)
+            messagebox.showinfo(
+                "Trabajadores", "Primero haga clic en un trabajador de la lista.", parent=self
+            )
+            return None
+        return self.app.ctl.worker(int(selection[0]))
+
+    def edit(self) -> None:
+        current = self._selected_worker()
+        if current is None:
             return
-        current = self.app.ctl.worker(int(selection[0]))
         names = {a.id: a.name for a in self.app.ctl.project.areas}
         initial = {
             "name": current.full_name,
             "ci": current.national_id,
             "area": names.get(current.area_id, ""),
             "position": current.position_name,
-            "group": to_roman(current.salary_group),
+            "group": to_roman(current.salary_group) if 1 <= current.salary_group <= 25 else "",
             "years": current.seniority_years,
             "days": current.days_worked,
             "contribution": str(current.contribution),
@@ -505,13 +660,13 @@ class WorkersTab(ttk.Frame):
             self.app.changed()
 
     def delete(self) -> None:
-        selection = self.tree.selection()
-        if not selection:
-            messagebox.showinfo("Trabajadores", "Selecciona primero un trabajador.", parent=self)
+        current = self._selected_worker()
+        if current is None:
             return
-        name = self.tree.item(selection[0], "values")[0]
-        if messagebox.askyesno("Eliminar", f"¿Eliminar a «{name}»?", parent=self):
-            self.app.ctl.delete_worker(int(selection[0]))
+        if messagebox.askyesno(
+            "Eliminar", f"¿Seguro que desea eliminar a «{current.full_name}»?", parent=self
+        ):
+            self.app.ctl.delete_worker(current.id)
             self.app.changed()
 
     def import_file(self) -> None:
@@ -533,7 +688,7 @@ class WorkersTab(ttk.Frame):
         if summary.defaults_used:
             text += (
                 f"\n{summary.defaults_used} usaron valores por defecto "
-                "(días completos, contribución 3): revísalos."
+                "(días completos, contribución 3): revíselos."
             )
         if problems:
             text += f"\n\nNo se importaron {len(problems)} filas:\n" + "\n".join(problems[:15])
@@ -545,29 +700,38 @@ class WorkersTab(ttk.Frame):
 
 class ResultsTab(ttk.Frame):
     def __init__(self, app: App):
-        super().__init__(app.notebook, padding=8)
+        super().__init__(app.notebook, padding=20)
         self.app = app
+        ttk.Label(self, text="Paso 4: Resultados", style="Title.TLabel").pack(anchor="w")
+        hint(
+            self,
+            "Revise los montos. Si todo cuadra, exporte el informe: incluye los cálculos y la pre-nómina.",
+        )
         bar = ttk.Frame(self)
-        bar.pack(fill="x", pady=(0, 6))
-        ttk.Button(bar, text="Exportar a Excel…", command=self.export).pack(side="left")
-        self.summary = ttk.Label(bar, text="")
-        self.summary.pack(side="left", padx=12)
+        bar.pack(fill="x", pady=(0, 8))
+        ttk.Button(bar, text="Exportar a Excel…", style="Primary.TButton", command=app.export).pack(
+            side="left"
+        )
+        self.summary = ttk.Label(bar, text="", style="Big.TLabel")
+        self.summary.pack(side="left", padx=20)
         area_columns = [
-            ("name", "Área", 300),
-            ("unexecuted", "Monto inejecutado", 130),
-            ("pct", "% del total", 80),
-            ("amount", "Monto a pagar", 130),
+            ("name", "Área", 330),
+            ("unexecuted", "Monto inejecutado", 160),
+            ("pct", "% del total", 100),
+            ("amount", "Monto a pagar", 160),
         ]
-        self.areas = make_tree(self, area_columns, show="headings", height=7)
+        self.areas = make_tree(
+            self, area_columns, expand=False, show="headings", height=4, style="Compact.Treeview"
+        )
         worker_columns = [
-            ("name", "Trabajador", 260),
-            ("area", "Área", 220),
-            ("coef", "Coeficiente", 90),
-            ("amount", "Monto a cobrar", 130),
+            ("name", "Trabajador", 280),
+            ("area", "Área", 240),
+            ("coef", "Coeficiente", 110),
+            ("amount", "Monto a cobrar", 160),
         ]
-        self.workers = make_tree(self, worker_columns, show="headings", height=10)
-        self.issues = tk.Text(self, height=5, wrap="word", state="disabled", background="#fff8e1")
-        self.issues.pack(fill="x", pady=(6, 0))
+        self.workers = make_tree(self, worker_columns, show="headings", height=6, style="Compact.Treeview")
+        self.issues = tk.Text(self, height=3, wrap="word", state="disabled", background="#fff8e1")
+        self.issues.pack(fill="x", pady=(8, 0))
 
     def refresh(self) -> None:
         ctl = self.app.ctl
@@ -580,6 +744,7 @@ class ResultsTab(ttk.Frame):
                 "end",
                 values=(a.area.name, money_text(a.unexecuted), f"{a.pct:.2f}", money_text(a.amount)),
             )
+        stripe(self.areas)
         self.workers.delete(*self.workers.get_children())
         for r in result.workers:
             self.workers.insert(
@@ -591,11 +756,15 @@ class ResultsTab(ttk.Frame):
                     f"{r.coefficient:.2f}",
                     money_text(r.amount),
                 ),
+                tags=("zero",) if r.amount == 0 else (),
             )
+        stripe(self.workers)
         total = ctl.project.settings.total_amount
+        balanced = result.distributed == total
         self.summary.configure(
-            text=f"A distribuir: {money_text(total)}   Repartido: {money_text(result.distributed)}",
-            foreground="#000" if result.distributed == total else "#b00",
+            text=f"A distribuir: {money_text(total)}     Repartido: {money_text(result.distributed)}"
+            + ("     ✓ Cuadra" if balanced else "     ⚠ No cuadra"),
+            foreground=COLOR_OK if balanced else COLOR_WARN,
         )
         self.issues.configure(state="normal")
         self.issues.delete("1.0", "end")
@@ -603,86 +772,185 @@ class ResultsTab(ttk.Frame):
         self.issues.insert("1.0", "\n".join(lines))
         self.issues.configure(state="disabled")
 
-    def export(self) -> None:
-        path = filedialog.asksaveasfilename(
-            parent=self,
-            title="Guardar informe",
-            defaultextension=".xlsx",
-            initialfile="fondo-de-salario.xlsx",
-            filetypes=[("Excel", "*.xlsx")],
-        )
-        if not path:
-            return
-        try:
-            self.app.ctl.export(path)
-        except OSError as error:
-            messagebox.showerror("Exportar", f"No se pudo guardar el archivo:\n{error}", parent=self)
-            return
-        messagebox.showinfo("Exportar", f"Informe guardado en:\n{path}", parent=self)
-
 
 class App(tk.Tk):
     def __init__(self, project_path: str | Path | None = None):
         super().__init__()
+        apply_style(self)
         self.title(APP_TITLE)
-        self.geometry("1150x680")
-        self.minsize(900, 560)
+        self.geometry("1280x760")
+        self.minsize(1000, 640)
+        self._maximize()
         self.store: ProjectStore | None = None
         self.ctl: Controller | None = None
+        self.project_path: Path | None = None
+        self._current_tab: ttk.Frame | None = None
+
+        self._build_toolbar()
+        self._build_footer()
         self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True)
+        self.notebook.pack(fill="both", expand=True, padx=12, pady=(8, 0))
         self.tabs = {
-            "Parámetros": ParametersTab(self),
-            "Áreas y cargos": StructureTab(self),
-            "Trabajadores": WorkersTab(self),
-            "Resultados": ResultsTab(self),
+            "1. Parámetros": ParametersTab(self),
+            "2. Áreas y cargos": StructureTab(self),
+            "3. Trabajadores": WorkersTab(self),
+            "4. Resultados": ResultsTab(self),
         }
         for title, tab in self.tabs.items():
             self.notebook.add(tab, text=title)
-        self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self._refresh_current())
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._build_menu()
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.bind_all("<Control-s>", lambda _e: self.save())
         if project_path:
             self.open_project(project_path)
         else:
-            self.after(100, self.start_prompt)
+            self.after(150, self.start_prompt)
+
+    def _maximize(self) -> None:
+        try:
+            self.state("zoomed")  # Windows
+        except tk.TclError:
+            try:
+                self.attributes("-zoomed", True)  # Linux
+            except tk.TclError:
+                pass
+
+    # -- chrome ---------------------------------------------------------------------------
+    def _build_toolbar(self) -> None:
+        bar = ttk.Frame(self, padding=(12, 8))
+        bar.pack(fill="x")
+        for text, command in [
+            ("Nuevo proyecto", self.new_project),
+            ("Abrir", self.ask_open_project),
+            ("Guardar", self.save),
+            ("Guardar una copia", self.save_copy),
+        ]:
+            ttk.Button(bar, text=text, style="Toolbar.TButton", command=command).pack(
+                side="left", padx=(0, 8)
+            )
+        ttk.Button(bar, text="Exportar a Excel", style="Toolbar.TButton", command=self.export).pack(
+            side="right"
+        )
+        ttk.Separator(self).pack(fill="x")
+
+    def _build_footer(self) -> None:
+        # packed from the bottom up, before the notebook, so it is always visible
+        self.status = ttk.Label(self, text="", style="Status.TLabel")
+        self.status.pack(side="bottom", fill="x")
+        ttk.Separator(self).pack(side="bottom", fill="x")
+        nav = ttk.Frame(self, padding=(12, 6))
+        nav.pack(side="bottom", fill="x")
+        ttk.Button(nav, text="‹ Anterior", style="Toolbar.TButton", command=lambda: self._step(-1)).pack(
+            side="left"
+        )
+        ttk.Button(nav, text="Siguiente ›", style="Primary.TButton", command=lambda: self._step(1)).pack(
+            side="right"
+        )
 
     def _build_menu(self) -> None:
         menu = tk.Menu(self)
         file_menu = tk.Menu(menu, tearoff=False)
         file_menu.add_command(label="Nuevo proyecto…", command=self.new_project)
         file_menu.add_command(label="Abrir proyecto…", command=self.ask_open_project)
+        file_menu.add_command(label="Guardar        Ctrl+S", command=self.save)
         file_menu.add_command(label="Guardar una copia…", command=self.save_copy)
+        file_menu.add_command(label="Exportar a Excel…", command=self.export)
         file_menu.add_separator()
-        file_menu.add_command(label="Salir", command=self.destroy)
+        file_menu.add_command(label="Salir", command=self.on_close)
         menu.add_cascade(label="Archivo", menu=file_menu)
         self.configure(menu=menu)
 
-    # -- project lifecycle -------------------------------------------------------------
+    def _step(self, delta: int) -> None:
+        index = self.notebook.index(self.notebook.select()) + delta
+        if 0 <= index < len(self.tabs):
+            self.notebook.select(index)
+
+    def update_status(self) -> None:
+        if self.ctl is None:
+            self.status.configure(text="Ningún proyecto abierto.", foreground=COLOR_HINT)
+            return
+        name = self.project_path.name if self.project_path else ""
+        pending = self.ctl.dirty or self.tabs["1. Parámetros"].edited
+        if pending:
+            self.status.configure(
+                text=f"Proyecto: {name}      ● Hay cambios sin guardar (pulse Guardar)",
+                foreground=COLOR_WARN,
+            )
+        else:
+            self.status.configure(text=f"Proyecto: {name}      ✓ Todo guardado", foreground=COLOR_OK)
+        self.title(f"{'* ' if pending else ''}{APP_TITLE} — {name}")
+
+    # -- tabs -----------------------------------------------------------------------------
+    def _on_tab_changed(self, _event=None) -> None:
+        if self.ctl is None:
+            return
+        current = self.nametowidget(self.notebook.select())
+        previous = self._current_tab
+        if isinstance(previous, ParametersTab) and current is not previous and previous.edited:
+            if not previous.apply():
+                self.notebook.select(previous)
+                return
+        self._current_tab = current
+        current.refresh()
+
+    def _apply_pending_parameters(self) -> bool:
+        params = self.tabs["1. Parámetros"]
+        if params.edited and not params.apply():
+            self.notebook.select(params)
+            return False
+        return True
+
+    # -- project lifecycle ----------------------------------------------------------------
     def start_prompt(self) -> None:
         answer = messagebox.askyesnocancel(
             APP_TITLE,
-            "¿Quieres abrir un proyecto existente?\n\n"
-            "Sí: abrir uno\nNo: crear un proyecto nuevo\nCancelar: salir",
+            "¿Quiere abrir un proyecto que ya tiene guardado?\n\n"
+            "Sí: abrir uno existente\nNo: crear un proyecto nuevo\nCancelar: salir",
             parent=self,
         )
         if answer is None:
             self.destroy()
         elif answer:
-            self.ask_open_project(exit_on_cancel=True)
+            self.ask_open_project(exit_on_cancel=True, check_unsaved=False)
         else:
-            self.new_project(exit_on_cancel=True)
+            self.new_project(exit_on_cancel=True, check_unsaved=False)
 
-    def new_project(self, exit_on_cancel: bool = False) -> None:
+    def confirm_leave(self) -> bool:
+        """Ask what to do with unsaved changes; False means the user cancelled."""
+        params = self.tabs["1. Parámetros"]
+        if self.ctl is None or not (self.ctl.dirty or params.edited):
+            return True
+        answer = messagebox.askyesnocancel(
+            "Guardar cambios",
+            "Hay cambios sin guardar.\n\n¿Desea guardarlos?\n\n"
+            "Sí: guardar\nNo: descartar los cambios\nCancelar: volver al programa",
+            icon="warning",
+            parent=self,
+        )
+        if answer is None:
+            return False
+        if answer:
+            return self.save()
+        params.edited = False
+        self.ctl.discard()
+        return True
+
+    def new_project(self, exit_on_cancel: bool = False, check_unsaved: bool = True) -> None:
+        if check_unsaved and not self.confirm_leave():
+            return
         path = filedialog.asksaveasfilename(
             parent=self,
-            title="Crear proyecto",
+            title="Crear proyecto nuevo",
             defaultextension=".fsal",
             initialfile="fondo-de-salario.fsal",
             filetypes=FILETYPES,
         )
         self._finish_pick(path, exit_on_cancel)
 
-    def ask_open_project(self, exit_on_cancel: bool = False) -> None:
+    def ask_open_project(self, exit_on_cancel: bool = False, check_unsaved: bool = True) -> None:
+        if check_unsaved and not self.confirm_leave():
+            return
         path = filedialog.askopenfilename(parent=self, title="Abrir proyecto", filetypes=FILETYPES)
         self._finish_pick(path, exit_on_cancel)
 
@@ -694,42 +962,84 @@ class App(tk.Tk):
 
     def open_project(self, path: str | Path) -> None:
         try:
-            store = ProjectStore(path)
+            store = ProjectStore(path, autosave=False)
         except (ValueError, OSError) as error:
             messagebox.showerror(APP_TITLE, f"No se pudo abrir el proyecto:\n{error}", parent=self)
             return
         if self.store:
             self.store.close()
         self.store, self.ctl = store, Controller(store)
-        self.title(f"{APP_TITLE} — {Path(path).name}")
+        self.project_path = Path(path)
+        self.tabs["1. Parámetros"].edited = False
+        self._current_tab = None
+        self.notebook.select(0)
         self.changed()
 
+    def save(self) -> bool:
+        if self.ctl is None:
+            return False
+        if not self._apply_pending_parameters():
+            return False
+        self.ctl.save()
+        self.update_status()
+        return True
+
     def save_copy(self) -> None:
-        if not self.store:
+        if self.store is None or not self._apply_pending_parameters():
             return
         path = filedialog.asksaveasfilename(
-            parent=self, title="Guardar una copia", defaultextension=".fsal", filetypes=FILETYPES
+            parent=self,
+            title="Guardar una copia del proyecto",
+            defaultextension=".fsal",
+            filetypes=FILETYPES,
         )
-        if path:
-            self.store.backup_to(path)
-            messagebox.showinfo(
-                APP_TITLE, "Copia guardada. Úsala como punto de partida para el próximo período.", parent=self
-            )
+        if not path:
+            return
+        self.store.backup_to(path)
+        self.update_status()
+        messagebox.showinfo(
+            APP_TITLE,
+            "Copia guardada (el proyecto actual también quedó guardado).\n"
+            "Use la copia como punto de partida para el próximo período.",
+            parent=self,
+        )
 
-    # -- refresh ------------------------------------------------------------------------
+    def export(self) -> None:
+        if self.ctl is None or not self._apply_pending_parameters():
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Guardar informe de Excel",
+            defaultextension=".xlsx",
+            initialfile="fondo-de-salario.xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+        )
+        if not path:
+            return
+        try:
+            self.ctl.export(path)
+        except OSError as error:
+            messagebox.showerror(
+                "Exportar",
+                f"No se pudo guardar el archivo. ¿Está abierto en Excel?\n{error}",
+                parent=self,
+            )
+            return
+        messagebox.showinfo("Exportar", f"Informe guardado en:\n{path}", parent=self)
+
+    def on_close(self) -> None:
+        if self.confirm_leave():
+            if self.store:
+                self.store.close()
+            self.destroy()
+
+    # -- refresh --------------------------------------------------------------------------
     def changed(self) -> None:
         for tab in self.tabs.values():
             tab.refresh()
-
-    def _refresh_current(self) -> None:
-        if self.ctl is None:
-            return
-        tab = self.nametowidget(self.notebook.select())
-        tab.refresh()
+        self.update_status()
 
 
 def main(argv: list[str] | None = None) -> None:
-    import sys
-
     args = sys.argv[1:] if argv is None else argv
     App(args[0] if args else None).mainloop()
