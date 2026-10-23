@@ -125,7 +125,10 @@ def test_import_legacy_creates_missing_areas_and_keeps_undefined_group(ctl):
     assert summary.undefined == 1
     ana = next(w for w in ctl.project.workers if w.full_name == "Ana Uno")
     assert ana.salary_group == 0 and ana.seniority_years == 0
-    # the calculation reports the incomplete worker instead of paying wrongly
+    assert ana.eligible is False  # nobody has the right to collect until it is granted
+    assert not any(i.code == "invalid_worker" for i in ctl.calculation().issues)
+    # once the right is granted, the calculation reports the incomplete data instead of paying wrongly
+    ctl.set_eligible([ana.id], True)
     assert any(i.code == "invalid_worker" for i in ctl.calculation().issues)
 
 
@@ -171,3 +174,9 @@ def test_set_eligible_for_several_workers_at_once(ctl):
     ctl.set_eligible(ids[:1], True)
     assert [w.eligible for w in ctl.project.workers] == [True, False, True]
     assert ctl.dirty is False or True  # state tracked by the store (autosave on in this fixture)
+
+
+def test_imported_workers_start_without_the_right_to_collect(ctl):
+    ctl.import_structure([AreaRow(1, "Dir")])
+    ctl.import_workers([row(name="Ana Uno", area="Dir"), row(name="Beto Dos", area="Dir")])
+    assert [w.eligible for w in ctl.project.workers] == [False, False]

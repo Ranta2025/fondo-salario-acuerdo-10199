@@ -9,6 +9,7 @@ from fondo_salario.domain.models import Area, Position, Settings, Worker
 from fondo_salario.domain.scales import band_score, time_score
 
 CENT = Decimal("0.01")
+NO_BONUS_CONTRIBUTION = 1  # a worker graded 1 gets no bonus, unlike the other grades
 ONE = Decimal(1)
 
 
@@ -150,14 +151,22 @@ def calculate(
     # Sheet 2: amount per worker.
     area_ids = {a.id for a in areas}
     scored: dict[int, tuple[int, int, int, int, Decimal]] = {}
+    if workers and not any(w.eligible for w in workers):
+        issues.append(Issue("no_eligible", "no worker has the right to collect yet"))
     for worker in workers:
+        if not worker.eligible:
+            continue  # no right to collect: their data does not matter and they are paid 0.00
         problem = _worker_problem(worker, area_ids)
         if problem:
             code, description = problem
             issues.append(
                 Issue("invalid_worker", f"{worker.full_name}: {description}", worker.full_name, code)
             )
-        elif worker.eligible:
+        elif worker.contribution == NO_BONUS_CONTRIBUTION:
+            issues.append(
+                Issue("no_bonus", f"{worker.full_name}: contribution 1 means no bonus", worker.full_name)
+            )
+        else:
             scored[worker.id] = _score_worker(worker, settings)
 
     results: dict[int, WorkerResult] = {}

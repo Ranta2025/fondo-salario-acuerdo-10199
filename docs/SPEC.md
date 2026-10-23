@@ -87,3 +87,9 @@ Tabs: Parametros | Areas y cargos | Trabajadores | Resultados. Add/edit/delete d
 Resultados recalculates live and shows warnings in red/amber; buttons "Exportar a Excel", "Importar trabajadores".
 Confirm before deleting. Deleting an area with workers is blocked or reassigns (ask). Keyboard-friendly, works at 1366x768.
 Packaging notes (PyInstaller one-file for Windows) go in README.
+
+## Rules added by «Rafelito 3» (iteration 3)
+- `eligible` («derecho a cobro») defaults to **False** for new and imported workers; only workers who cover the
+  vacant position's tasks are marked. Workers without the right get 0.00 and their data is not validated.
+- Contribution grade 1 means *no bonus*: the worker is excluded from the distribution (0.00) and does not dilute the others.
+- If nobody has the right to collect the results explain it (`no_eligible`).

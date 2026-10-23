@@ -23,8 +23,8 @@ FILETYPES = [("Proyecto de fondo de salario", "*.fsal")]
 ROMANS = [to_roman(n) for n in range(1, 26)]
 FONT_SIZE = 12
 
-# Contribution grades as described in the regulation («Rafelito 3»); grade 1 has no description there.
-CONTRIBUTION_NAMES = {5: "Excepcional", 4: "Bueno", 3: "Satisfactorio", 2: "Regular"}
+# Contribution grades of the regulation («Rafelito 3»); grade 1 (not in its table) means no bonus.
+CONTRIBUTION_NAMES = {5: "Excepcional", 4: "Bueno", 3: "Satisfactorio", 2: "Regular", 1: "Sin bonificación"}
 
 COLOR_STRIPE = "#eef2f7"
 COLOR_AREA = "#d9e2ef"
@@ -681,7 +681,7 @@ class WorkersTab(ttk.Frame):
             "days": s.expected_days_per_month * s.months_paid,
             "years": 0,
             "contribution": contribution_label(3),
-            "eligible": True,
+            "eligible": False,  # granted by hand
         }
         worker = self._form("Agregar trabajador", initial)
         if worker:
@@ -766,6 +766,10 @@ class WorkersTab(ttk.Frame):
         )
         problems = [f"Fila {e.line}: {e.message}" for e in read.errors] + summary.skipped
         text = f"Trabajadores importados: {summary.added}."
+        if summary.added:
+            text += (
+                "\nTodos entraron SIN derecho a cobro: márquelos en esta pestaña con «Dar derecho a cobro»."
+            )
         if summary.areas_created:
             text += f"\nÁreas nuevas creadas: {len(summary.areas_created)}."
         if summary.undefined:

@@ -275,3 +275,30 @@ def test_monthly_example_of_the_document():
     for got, expected in zip(result.workers, document_amounts, strict=True):
         assert abs(got.amount - D(expected)) <= D("0.01")  # the document rounds the point value first
     assert sum(r.amount for r in result.workers) == D("8000.00")
+
+
+# --- contribution 1 = no bonus; right to collect ----------------------------------------
+def test_contribution_1_gets_no_bonus_and_does_not_dilute_the_others(org):
+    areas, positions = org
+    result = calculate(
+        settings(), areas, positions, [worker(1, 1, contribution=1), worker(2, 1, contribution=4)]
+    )
+    by_id = {r.worker.id: r for r in result.workers}
+    area_amount = next(a for a in result.areas if a.area.id == 1).amount
+    assert by_id[1].amount == D("0.00") and by_id[1].coefficient == D(0)
+    assert by_id[2].amount == area_amount  # the whole area amount goes to the one with a bonus
+    assert any(i.code == "no_bonus" and i.subject == "Worker 1" for i in result.issues)
+
+
+def test_reports_when_no_worker_has_the_right_to_collect(org):
+    areas, positions = org
+    result = calculate(settings(), areas, positions, [worker(1, 1, eligible=False)])
+    assert any(i.code == "no_eligible" for i in result.issues)
+    ok = calculate(settings(), areas, positions, [worker(1, 1)])
+    assert not any(i.code == "no_eligible" for i in ok.issues)
+
+
+def test_incomplete_data_of_a_worker_without_the_right_is_not_reported(org):
+    areas, positions = org
+    result = calculate(settings(), areas, positions, [worker(1, 1, salary_group=0, eligible=False)])
+    assert not any(i.code == "invalid_worker" for i in result.issues)

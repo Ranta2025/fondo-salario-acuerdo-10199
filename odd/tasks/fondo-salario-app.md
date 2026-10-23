@@ -37,7 +37,7 @@ cover the vacant position's tasks); area amount -> workers by coef / sum of area
 
 ## Open assumptions (flag to user)
 - RESOLVED by «Rafelito 3»: weights 25/40/20/15, seniority bands and the time-worked ranges now come from the document.
-- Contribution score 1 has no descriptor in the document (only 5, 4, 3, 2): shown as the plain number.
+- DECIDED by user: contribution 1 = no bonus (paid 0.00, excluded from the distribution); new/imported workers start WITHOUT the right to collect; no field for the vacant position covered.
 
 ## Progress / evidence
 (none yet)

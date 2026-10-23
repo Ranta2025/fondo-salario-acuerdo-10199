@@ -172,8 +172,8 @@ def test_contribution_labels_follow_the_regulation():
         "4 - Bueno",
         "3 - Satisfactorio",
         "2 - Regular",
-        "1",
+        "1 - Sin bonificación",
     ]
     assert app_module.contribution_from_text("4 - Bueno") == 4
-    assert app_module.contribution_from_text("1") == 1
+    assert app_module.contribution_from_text("1 - Sin bonificación") == 1
     assert app_module.contribution_label(3) == "3 - Satisfactorio"

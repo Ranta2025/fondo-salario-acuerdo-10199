@@ -18,7 +18,7 @@ asamblea de trabajadores). Por eso los pesos y las escalas son configurables.
    | Indicador | Peso por defecto | Cómo se evalúa |
    |---|---|---|
    | Responsabilidad | 0.25 | grupo salarial: I–V = 1, VI–X = 2, XI–XV = 3, XVI–XX = 4, XXI–XXV = 5 |
-   | Contribución | 0.40 | nota que da el jefe: 5 Excepcional, 4 Bueno, 3 Satisfactorio, 2 Regular |
+   | Contribución | 0.40 | nota que da el jefe: 5 Excepcional, 4 Bueno, 3 Satisfactorio, 2 Regular. **1 = sin bonificación: cobra 0.00** |
    | Tiempo laborado | 0.20 | % de días trabajados sobre (24 × meses a pagar): hasta 20 % = 1, 40 % = 2, 60 % = 3, 80 % = 4, más de 80 % = 5 (0 días = sin puntaje) |
    | Antigüedad | 0.15 | hasta 5 años = 1, 6–10 = 2, 11–15 = 3, 16–20 = 4, más de 20 = 5 |
 
@@ -37,7 +37,8 @@ Los pesos (25/40/20/15) y las escalas por defecto siguen el documento «Rafelito
    plazas aprobadas, vacantes, temporalmente vacantes, salario y meses inejecutados.
 3. **Trabajadores**: agrega, edita o elimina trabajadores, o impórtalos desde CSV/Excel
    (columnas: nombre, carné, área, cargo, grupo, antigüedad, días, contribución).
-   Marca «Cobra» en No para quien no deba recibir pago.
+   **Todos entran sin derecho a cobro**: el derecho es solo para quienes asumen las tareas de una plaza
+   vacante. Márcalo con «Dar derecho a cobro» (puedes seleccionar varios a la vez) o quítalo con «Quitar derecho a cobro».
 4. **Resultados**: revisa los montos y las observaciones. Pulsa **Exportar a Excel** para generar el informe
    (montos por área, coeficientes por trabajador, pre-nómina y parámetros usados), listo para imprimir.
 

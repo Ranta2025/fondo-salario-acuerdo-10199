@@ -169,6 +169,7 @@ class Controller:
                     seniority_years=row.seniority_years or 0,
                     days_worked=full_period if row.days_worked is None else row.days_worked,
                     contribution=DEFAULT_CONTRIBUTION if row.contribution is None else row.contribution,
+                    eligible=False,  # the right to collect is granted by hand, worker by worker
                 )
             )
             known.append(key)
