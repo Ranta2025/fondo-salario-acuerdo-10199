@@ -30,6 +30,16 @@ cover the vacant position's tasks); area amount -> workers by coef / sum of area
 - [x] T13 Schema v3: old default settings upgrade to the new ones; «restablecer» button; docs (SPEC, README) updated — 125 tests; v2 projects with old defaults are upgraded, customized ones untouched
 - [x] T14 «Derecho a cobro»: clear column/filter/bulk toggle in Trabajadores, column in the Excel report, contribution labels — 130 tests; bulk grant/revoke, filter, Excel columns, contribution labels; parameters form fits 1366x680
 
+## Iteration 4 (user: smart import = merge into existing data)
+Branch `feat/merge-import`. Identify workers by CI or name, positions by area + position name. New records are added;
+existing ones are joined: empty fields are completed automatically, differing values are asked ONE BY ONE with an
+«accept all the rest» shortcut (plus summary dialog: review one by one / accept all / only add what is missing).
+Nothing is deleted. Applies to Excel and CSV imports (workers and areas/positions).
+- [x] T15 Pure merge planner (`importers/merge.py`): match, fills, conflicts, resolve(mode, ask) + tests — 22 planner tests
+- [ ] T16 Controller: plan_*/apply_import (import_workers/import_structure become thin wrappers) + tests
+- [ ] T17 Dialogs: summary + one-by-one conflict dialog with «accept all the rest»; wire both import buttons; window tests
+- [ ] T18 Docs (README/SPEC), full verification, merge + release
+
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
 - Pre-nomina lists every worker, 0.00 for non-paid.

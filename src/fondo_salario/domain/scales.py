@@ -32,3 +32,15 @@ def time_score(days_worked: int, expected_days: int, months: int) -> int:
     potential = expected_days * months
     score = (Decimal(MAX_SCORE * days_worked) / Decimal(potential)).to_integral_value(rounding=ROUND_CEILING)
     return int(min(max(score, 1), MAX_SCORE))
+
+
+_ROMAN_PAIRS = ((10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"))
+
+
+def to_roman(number: int) -> str:
+    out = ""
+    for value, symbol in _ROMAN_PAIRS:
+        while number >= value:
+            out += symbol
+            number -= value
+    return out

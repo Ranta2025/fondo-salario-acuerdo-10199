@@ -14,6 +14,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from fondo_salario.domain.calculation import CalculationResult
 from fondo_salario.domain.models import Settings
+from fondo_salario.domain.scales import to_roman  # noqa: F401  (re-exported: used by the UI and tests)
 from fondo_salario.messages import describe
 
 MONEY = "#,##0.00"
@@ -22,17 +23,6 @@ BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 HEADER_FILL = PatternFill("solid", fgColor="D9E1F2")
 AREA_FILL = PatternFill("solid", fgColor="F2F2F2")
 BOLD = Font(bold=True)
-
-ROMAN_PAIRS = ((10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"))
-
-
-def to_roman(number: int) -> str:
-    out = ""
-    for value, symbol in ROMAN_PAIRS:
-        while number >= value:
-            out += symbol
-            number -= value
-    return out
 
 
 def _yes_no(flag: bool) -> str:
