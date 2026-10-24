@@ -44,3 +44,18 @@ def to_roman(number: int) -> str:
             out += symbol
             number -= value
     return out
+
+
+_ROMAN_VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
+
+
+def parse_roman(text: str) -> int | None:
+    """Value of a roman numeral, or None when the text is not one."""
+    total, previous = 0, 0
+    for char in reversed(text.strip().upper()):
+        value = _ROMAN_VALUES.get(char)
+        if value is None:
+            return None
+        total += -value if value < previous else value
+        previous = max(previous, value)
+    return total or None

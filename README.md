@@ -33,26 +33,32 @@ Los pesos (25/40/20/15) y las escalas por defecto siguen el documento «Rafelito
 ## Uso
 
 1. **Parámetros**: monto real a distribuir, meses a pagar, pesos y escalas.
-2. **Áreas y cargos**: crea las áreas y sus cargos (o impórtalos desde el Excel antiguo). En cada cargo indica
-   plazas aprobadas, vacantes, temporalmente vacantes, salario y meses inejecutados.
-3. **Trabajadores**: agrega, edita o elimina trabajadores, o impórtalos desde CSV/Excel
-   (columnas: nombre, carné, área, cargo, grupo, antigüedad, días, contribución).
-   **Todos entran sin derecho a cobro**: el derecho es solo para quienes asumen las tareas de una plaza
+2. **Áreas y cargos**: crea las áreas y sus cargos, o impórtalos desde Excel/CSV (ver «Importar» abajo). En cada
+   cargo indica plazas aprobadas, vacantes, temporalmente vacantes, vacantes a distribuir, salario y meses.
+3. **Trabajadores**: agrega, edita o elimina trabajadores, o impórtalos desde Excel/CSV.
+   Por defecto entran **sin derecho a cobro**: el derecho es solo para quienes asumen las tareas de una plaza
    vacante. Márcalo con «Dar derecho a cobro» (puedes seleccionar varios a la vez) o quítalo con «Quitar derecho a cobro».
-   **Importar sobre datos que ya tienes:** el programa no duplica ni borra nada. Identifica a cada trabajador por su
-   **carné o su nombre**, y a cada cargo por **área + puesto**. Lo que no tienes se agrega; a lo que ya existe le
-   **completa solo los datos que le faltan** (por ejemplo el carné); y si algún dato **es distinto**, te lo pregunta
-   **uno por uno** (sobrescribir o conservar el tuyo) o puedes **aceptarlas todas directamente**. Antes de aplicar
-   muestra un resumen y puedes cancelar sin que cambie nada.
-   **Qué archivos entiende:** busca solo la fila de títulos (en cualquier hoja, aunque haya filas vacías arriba) y
-   aprovecha las columnas que reconoce, aunque se llamen distinto («Nombre y Apellidos», «C.I.», «Departamento»…).
-   Con solo nombre y carné completa los carnés que faltan. También lee una **plantilla de cargos** (columna «Áreas y
-   Cargos» con las áreas como filas de título, luego «Trabajador», «Carnet», «Grupo»): trae trabajadores, y desde
-   **Importar desde Excel** del paso 2 crea las áreas y los cargos (los cargos sin trabajador cuentan como vacantes). Las
-   áreas con nombre parecido se emparejan solas; las que no se parecen se crean y se listan en el resumen.
-   Al terminar te dice qué columnas leyó y qué filas no pudo usar.
 4. **Resultados**: revisa los montos y las observaciones. Pulsa **Exportar a Excel** para generar el informe
    (montos por área, coeficientes por trabajador, pre-nómina y parámetros usados), listo para imprimir.
+
+### Importar desde Excel o CSV
+
+La importación usa **una estructura fija**, la misma de las tablas del programa. Pulsa **Guardar plantilla…** (pasos 2
+y 3, o menú Archivo) para obtener un Excel con las hojas y los títulos correctos:
+
+| Hoja | Columnas (primera fila, sin cambiar los títulos) |
+|---|---|
+| **Áreas y cargos** | Área · Cargo · Aprobadas · Vacantes · Temporales · Vacantes a distribuir · Salario · Meses |
+| **Trabajadores** | Nombre y apellidos · Carné de identidad · Área · Cargo · Grupo · Antigüedad · Días · Contribución · Derecho a cobro |
+
+- Si el archivo no cumple la estructura, **no se importa nada** y el programa dice qué columna falta.
+- **Solo agrega lo nuevo**: un trabajador que ya existe (mismo carné o mismo nombre) o un cargo que ya existe (misma
+  área y cargo) **no se toca**. Nada se borra ni se pregunta fila por fila; antes de agregar se muestra un resumen
+  para confirmar.
+- Las filas con problemas (falta el nombre, grupo que no es romano, área que no existe…) se listan con su número de
+  fila y el resto se importa. Importe primero «Áreas y cargos» y después «Trabajadores».
+- El informe que exporta el programa **ya trae estas dos hojas** con la misma estructura: sirve para cargar los datos
+  en otro proyecto (por ejemplo, el del próximo período).
 
 Todo se guarda automáticamente en el archivo del proyecto (`.fsal`). Para el próximo período usa
 **Archivo → Guardar una copia** y trabaja sobre la copia.

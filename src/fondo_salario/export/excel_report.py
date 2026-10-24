@@ -14,7 +14,8 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from fondo_salario.domain.calculation import CalculationResult
 from fondo_salario.domain.models import Settings
-from fondo_salario.domain.scales import to_roman  # noqa: F401  (re-exported: used by the UI and tests)
+from fondo_salario.domain.scales import to_roman
+from fondo_salario.importers.table import add_data_sheets
 from fondo_salario.messages import describe
 
 MONEY = "#,##0.00"
@@ -274,4 +275,11 @@ def export_report(
     _worker_sheet(wb, result, subtitle)
     _payroll_sheet(wb, settings, result, subtitle)
     _parameters_sheet(wb, settings, result, generated_on)
+    # the same two tables in the import structure, so the report can be loaded into another project
+    add_data_sheets(
+        wb,
+        [a.area for a in result.areas],
+        [p.position for a in result.areas for p in a.positions],
+        [w.worker for w in result.workers],
+    )
     wb.save(Path(path))

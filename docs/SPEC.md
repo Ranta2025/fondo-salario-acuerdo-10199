@@ -24,7 +24,7 @@ src/fondo_salario/
   domain/{models.py,scales.py,calculation.py}
   persistence/sqlite_repo.py
   export/excel_report.py
-  importers/{workers.py,structure.py}
+  importers/table.py       # fixed import/export structure, template, add-only plans
   ui/                      # tkinter; logic in presenters/view-models testable without a display
   __main__.py              # python -m fondo_salario
 tests/
@@ -77,10 +77,7 @@ national ID + area + amount, 0.00 for those who get nothing, total + check), `Pa
 Number format `#,##0.00`. Bold headers, borders, column widths set, no merged-cell tricks beyond titles.
 
 ## Importers (read user's own files at runtime; nothing external is stored in the repo)
-- `workers.py`: CSV/XLSX with header aliases (nombre, ci/carne, area, cargo, grupo, antiguedad, dias, contribucion); returns rows + per-row errors.
-- `structure.py`: best-effort import of areas/positions from the legacy sheet layout "Dist.Monto x area":
-  col B = area number, col C = name, area header rows match `^\s*\d+\s*[.\-]`, position rows follow under the same B number,
-  col D approved, col E salary, col G months. Tests build a synthetic workbook with that layout.
+`importers/table.py` defines ONE fixed structure (see «Fixed-structure import» below); there are no heuristic readers.
 
 ## UI (tkinter/ttk, Spanish)
 Tabs: Parametros | Areas y cargos | Trabajadores | Resultados. Add/edit/delete dialogs; search + area filter in workers;
@@ -94,11 +91,13 @@ Packaging notes (PyInstaller one-file for Windows) go in README.
 - Contribution grade 1 means *no bonus*: the worker is excluded from the distribution (0.00) and does not dilute the others.
 - If nobody has the right to collect the results explain it (`no_eligible`).
 
-## Smart import (iteration 4)
-Imports (workers CSV/XLSX, areas/positions XLSX) merge into existing data via `importers/merge.py`:
-- Identity: worker = ID number, else normalized full name; position = area + normalized position name; area = normalized name.
-- Not found -> added (workers start without the right to collect). Found -> empty fields completed automatically
-  (empty = «», group 0, seniority 0, salary/vacant/months 0); different values -> `FieldDiff` asked one by one
-  (answers: overwrite / keep / overwrite the rest / cancel) or all at once («accept_all» / «keep_all»).
-- A zero in the areas file means «no data» and never overwrites. Nothing is deleted. Cancelling applies nothing.
-- `apply_import(plan)` stores the result; `import_workers` / `import_structure` are non-interactive wrappers that keep stored values.
+## Fixed-structure import (iteration 6)
+One predefined structure, identical to the tables of the program; the file must comply or the import is refused.
+- Sheets «Trabajadores» (Nombre y apellidos, Carné de identidad, Área, Cargo, Grupo, Antigüedad, Días, Contribución,
+  Derecho a cobro) and «Áreas y cargos» (Área, Cargo, Aprobadas, Vacantes, Temporales, Vacantes a distribuir, Salario,
+  Meses). Titles must be in row 1 (order free); a workbook with a single sheet may name it freely; CSV uses the same titles.
+- Missing columns -> `ImportFormatError` (message lists them). Invalid rows -> «Fila N: …» errors, the rest is imported.
+- Add-only: worker identity = ID else normalized name; position = area + normalized name; unknown area for a worker ->
+  row skipped with reason. Existing records are never changed. `Controller.plan_*_import(path)` + `apply_*_import(plan)`.
+- The Excel report ends with the same two sheets (`add_data_sheets`), and `write_template` writes them empty with an
+  «Instrucciones» sheet; export -> import round trip is covered by tests.

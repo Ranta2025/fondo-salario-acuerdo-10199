@@ -10,15 +10,13 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
 from fondo_salario.domain.models import Position, Settings, Worker
+from fondo_salario.domain.scales import parse_roman
 from fondo_salario.export.excel_report import to_roman
-from fondo_salario.importers.merge import ImportPlan, resolve
-from fondo_salario.importers.structure import looks_like, read_structure
-from fondo_salario.importers.workers import parse_roman, read_workers_auto
+from fondo_salario.importers.table import ImportFormatError, StructurePlan, WorkersPlan
 from fondo_salario.messages import describe
 from fondo_salario.persistence.sqlite_repo import AreaInUseError, ProjectStore
 from fondo_salario.ui.controller import Controller, ImportSummary, parse_money, resolve_distribute
 from fondo_salario.ui.forms import Field, ask_form
-from fondo_salario.ui.merge_dialogs import ask_conflict, ask_summary
 
 APP_TITLE = "Fondo de salario — Acuerdo 10199/2025"
 FILETYPES = [("Proyecto de fondo de salario", "*.fsal")]
@@ -119,68 +117,81 @@ def apply_style(root: tk.Tk) -> None:
     root.option_add("*TCombobox*Listbox.font", (family, FONT_SIZE))
 
 
-def run_import(parent: tk.Misc, ctl: Controller, plan: ImportPlan) -> ImportSummary | None:
-    """Summary first, then the differences one by one (or all at once); None if the user cancelled."""
-    mode = ask_summary(parent, plan)
-    if mode is None:
-        return None
-    if not resolve(plan, mode, lambda item, diff, i, n: ask_conflict(parent, item, diff, i, n)):
-        return None
-    return ctl.apply_import(plan)
-
-
-def import_report(
-    summary: ImportSummary, errors: list[str], workers: bool, notes: list[str] | None = None
-) -> str:
-    """Plain-Spanish result of an import."""
-    lines = ["Importación terminada."]
-    if workers and summary.added:
-        lines.append(f"• Trabajadores nuevos agregados: {summary.added} (todos SIN derecho a cobro).")
-    if summary.areas_added:
-        lines.append(f"• Áreas nuevas agregadas: {summary.areas_added}.")
-    if summary.positions_added:
-        lines.append(f"• Cargos nuevos agregados: {summary.positions_added}.")
-    if summary.areas_created:
-        lines.append(f"• Áreas creadas: {len(summary.areas_created)}.")
-    if summary.completed:
-        lines.append(f"• Datos completados que te faltaban: {summary.completed}.")
-    if summary.overwritten or summary.kept:
-        lines.append(f"• Diferencias: {summary.overwritten} sobrescritas, {summary.kept} conservadas.")
-    if summary.unchanged:
-        lines.append(f"• Ya estaban completos y no cambian: {summary.unchanged}.")
-    if summary.undefined:
-        lines.append(
-            f"• {summary.undefined} trabajadores no tienen grupo salarial o antigüedad en el archivo: "
-            "aparecen con «—» y no cobrarán hasta que los complete (haga doble clic en cada uno)."
-        )
-    if summary.defaults_used:
-        lines.append(
-            f"• {summary.defaults_used} usaron valores por defecto "
-            "(días completos, contribución 3): revíselos."
-        )
-    if workers and summary.added:
-        lines.append("\nMárquelos en esta pestaña con «Dar derecho a cobro».")
-    lines.extend(f"• {note}" for note in (notes or [])[:8])
-    problems = errors + summary.skipped
-    if problems:
-        lines.append(f"\nNo se importaron {len(problems)} filas:")
-        lines.extend(problems[:15])
-        if len(problems) > 15:
-            lines.append(f"… y {len(problems) - 15} más")
+def problems_text(skipped: list[str]) -> str:
+    if not skipped:
+        return ""
+    lines = [f"\nNo se pueden importar {len(skipped)} filas:"] + skipped[:15]
+    if len(skipped) > 15:
+        lines.append(f"… y {len(skipped) - 15} más")
     return "\n".join(lines)
 
 
-def nothing_new_text(plan: ImportPlan, errors: list[str], notes: list[str] | None = None) -> str:
-    problems = errors + plan.skipped
-    if plan.unchanged or not problems:
-        text = "No hay nada nuevo: todos los datos del archivo ya estaban registrados y completos."
+def workers_plan_text(plan: WorkersPlan) -> str:
+    lines = [f"• Trabajadores nuevos: {len(plan.new)}"]
+    if sum(w.eligible for w in plan.new):
+        lines.append(f"  (con derecho a cobro según el archivo: {sum(w.eligible for w in plan.new)})")
+    if plan.unchanged:
+        lines.append(f"• Ya estaban registrados (no se cambian): {plan.unchanged}")
+    return "\n".join(lines)
+
+
+def structure_plan_text(plan: StructurePlan) -> str:
+    lines = []
+    if plan.new_areas:
+        lines.append(f"• Áreas nuevas: {len(plan.new_areas)}")
+    if plan.new_positions:
+        lines.append(f"• Cargos nuevos: {len(plan.new_positions)}")
+    if plan.unchanged:
+        lines.append(f"• Ya estaban registrados (no se cambian): {plan.unchanged}")
+    return "\n".join(lines)
+
+
+def nothing_new_text(unchanged: int, skipped: list[str]) -> str:
+    if unchanged and not skipped:
+        text = f"No hay registros nuevos: los {unchanged} del archivo ya estaban registrados."
     else:
-        text = "No se pudo importar ninguna fila del archivo."
-    if problems:
-        text += f"\n\nNo se pueden importar {len(problems)} filas:\n" + "\n".join(problems[:15])
-    if notes:
-        text += "\n\n" + "\n".join(notes[:8])
-    return text
+        text = "No se agregó nada: el archivo no trae registros nuevos que se puedan importar."
+    return text + problems_text(skipped)
+
+
+def import_result_text(summary: ImportSummary) -> str:
+    lines = ["Importación terminada."]
+    if summary.workers_added:
+        lines.append(f"• Trabajadores agregados: {summary.workers_added}.")
+    if summary.areas_added:
+        lines.append(f"• Áreas agregadas: {summary.areas_added}.")
+    if summary.positions_added:
+        lines.append(f"• Cargos agregados: {summary.positions_added}.")
+    if summary.unchanged:
+        lines.append(f"• Ya estaban registrados y no se cambiaron: {summary.unchanged}.")
+    return "\n".join(lines) + problems_text(summary.skipped)
+
+
+def import_with_confirmation(parent, app: App, title: str, plan_function, describe, apply, has_news) -> bool:
+    """Pick a file, show what would be added, and add it after the user agrees. True when data changed."""
+    path = filedialog.askopenfilename(
+        parent=parent, title=title, filetypes=[("Excel o CSV", "*.xlsx *.csv"), ("Todos", "*.*")]
+    )
+    if not path:
+        return False
+    try:
+        plan = plan_function(path)
+    except ImportFormatError as error:
+        messagebox.showerror("Importar: el archivo no sigue la estructura", str(error), parent=parent)
+        return False
+    except Exception as error:  # unreadable file
+        messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=parent)
+        return False
+    if not has_news(plan):
+        messagebox.showinfo("Importar", nothing_new_text(plan.unchanged, plan.skipped), parent=parent)
+        return False
+    question = "Se agregará lo siguiente (lo que ya existe no se cambia):\n\n" + describe(plan)
+    question += problems_text(plan.skipped) + "\n\n¿Continuar?"
+    if not messagebox.askokcancel("Importar", question, parent=parent):
+        return False
+    messagebox.showinfo("Importar", import_result_text(apply(plan)), parent=parent)
+    app.changed()
+    return True
 
 
 def hint(parent, text: str) -> ttk.Label:
@@ -368,7 +379,7 @@ class StructureTab(ttk.Frame):
             self,
             "Cree las áreas y, dentro de cada una, sus cargos. En cada cargo indique cuántas plazas están "
             "vacantes y cuántas de esas vacantes se van a distribuir. "
-            "También puede importarlas desde su Excel anterior.",
+            "También puede importarlas desde un Excel con la estructura de la plantilla.",
         )
         button_bar(
             self,
@@ -378,7 +389,8 @@ class StructureTab(ttk.Frame):
                 ("Agregar cargo", self.add_position),
                 ("Editar cargo", self.edit_position),
                 ("Eliminar", self.delete),
-                ("Importar desde Excel…", self.import_excel),
+                ("Importar Excel/CSV…", self.import_excel),
+                ("Guardar plantilla", self.app.save_template),
             ],
         )
         columns = [
@@ -564,37 +576,16 @@ class StructureTab(ttk.Frame):
         self.app.changed()
 
     def import_excel(self) -> None:
-        path = filedialog.askopenfilename(
-            parent=self,
-            title="Excel con la relación de áreas y cargos",
-            filetypes=[("Excel o CSV", "*.xlsx *.csv"), ("Todos", "*.*")],
+        ctl = self.app.ctl
+        import_with_confirmation(
+            self,
+            self.app,
+            "Excel o CSV con las áreas y cargos",
+            ctl.plan_structure_import,
+            structure_plan_text,
+            ctl.apply_structure_import,
+            lambda plan: bool(plan.new_areas or plan.new_positions),
         )
-        if not path:
-            return
-        try:
-            areas = read_structure(path)
-            plan = self.app.ctl.plan_structure_import(areas)
-        except Exception as error:  # unreadable or unexpected workbook
-            messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
-            return
-        if not areas:
-            text = "No se reconoció ninguna área ni cargo en el archivo."
-            if looks_like(path) == "workers":
-                text += "\n\nParece un archivo de trabajadores: use «Importar desde Excel/CSV» en el paso 3."
-            messagebox.showinfo("Importar", text, parent=self)
-            return
-        if not (plan.new_count or plan.fill_count or plan.conflicts):
-            messagebox.showinfo("Importar", nothing_new_text(plan, []), parent=self)
-            return
-        summary = run_import(self, self.app.ctl, plan)
-        if summary is None:
-            return
-        messagebox.showinfo(
-            "Importar",
-            import_report(summary, [], workers=False) + "\n\nRevise las vacantes de cada cargo.",
-            parent=self,
-        )
-        self.app.changed()
 
 
 def _non_empty(key: str, label: str):
@@ -627,7 +618,8 @@ class WorkersTab(ttk.Frame):
                 ("Eliminar", self.delete),
                 ("Dar derecho a cobro", self.grant_right),
                 ("Quitar derecho a cobro", self.revoke_right),
-                ("Importar desde Excel/CSV…", self.import_file),
+                ("Importar Excel/CSV…", self.import_file),
+                ("Guardar plantilla", self.app.save_template),
             ],
         )
         filters = ttk.Frame(self)
@@ -824,38 +816,16 @@ class WorkersTab(ttk.Frame):
             self.app.changed()
 
     def import_file(self) -> None:
-        path = filedialog.askopenfilename(
-            parent=self,
-            title="Archivo de trabajadores",
-            filetypes=[("Excel o CSV", "*.xlsx *.csv"), ("Todos", "*.*")],
+        ctl = self.app.ctl
+        import_with_confirmation(
+            self,
+            self.app,
+            "Excel o CSV con los trabajadores",
+            ctl.plan_workers_import,
+            workers_plan_text,
+            ctl.apply_workers_import,
+            lambda plan: bool(plan.new),
         )
-        if not path:
-            return
-        try:
-            read = read_workers_auto(path)
-        except Exception as error:  # unreadable file
-            messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
-            return
-        if not read.rows and looks_like(path) == "structure":
-            messagebox.showinfo(
-                "Importar",
-                "Parece un archivo de áreas y cargos, no de trabajadores: use «Importar desde Excel» "
-                "en el paso 2.",
-                parent=self,
-            )
-            return
-        plan = self.app.ctl.plan_workers_import(read.rows, create_missing_areas=True, allow_undefined=True)
-        errors = [f"Fila {e.line}: {e.message}" for e in read.errors]
-        if not (plan.new_count or plan.fill_count or plan.conflicts):
-            messagebox.showinfo("Importar", nothing_new_text(plan, errors, read.notes), parent=self)
-            return
-        summary = run_import(self, self.app.ctl, plan)
-        if summary is None:
-            return
-        messagebox.showinfo(
-            "Importar", import_report(summary, errors, workers=True, notes=read.notes), parent=self
-        )
-        self.app.changed()
 
 
 class ResultsTab(ttk.Frame):
@@ -1026,6 +996,7 @@ class App(tk.Tk):
         file_menu.add_command(label="Guardar        Ctrl+S", command=self.save)
         file_menu.add_command(label="Guardar una copia…", command=self.save_copy)
         file_menu.add_command(label="Exportar a Excel…", command=self.export)
+        file_menu.add_command(label="Guardar plantilla de importación…", command=self.save_template)
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.on_close)
         menu.add_cascade(label="Archivo", menu=file_menu)
@@ -1196,6 +1167,32 @@ class App(tk.Tk):
             )
             return
         messagebox.showinfo("Exportar", f"Informe guardado en:\n{path}", parent=self)
+
+    def save_template(self) -> None:
+        if self.ctl is None:
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Guardar plantilla de importación",
+            defaultextension=".xlsx",
+            initialfile="plantilla-fondo-salario.xlsx",
+            filetypes=[("Excel", "*.xlsx")],
+        )
+        if not path:
+            return
+        try:
+            self.ctl.save_template(path)
+        except OSError as error:
+            messagebox.showerror(
+                "Plantilla", f"No se pudo guardar el archivo. ¿Está abierto en Excel?\n{error}", parent=self
+            )
+            return
+        messagebox.showinfo(
+            "Plantilla",
+            f"Plantilla guardada en:\n{path}\n\nLlene las hojas «Áreas y cargos» y «Trabajadores» "
+            "sin cambiar los títulos y luego impórtelas.",
+            parent=self,
+        )
 
     def on_close(self) -> None:
         if self.confirm_leave():

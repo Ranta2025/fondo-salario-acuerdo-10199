@@ -9,31 +9,28 @@ from pathlib import Path
 from fondo_salario.domain.calculation import CalculationResult, calculate
 from fondo_salario.domain.models import Area, Position, Settings, Worker
 from fondo_salario.export.excel_report import export_report
-from fondo_salario.importers.merge import ImportPlan, plan_structure, plan_workers, resolve
-from fondo_salario.importers.structure import AreaRow
-from fondo_salario.importers.workers import WorkerRow, normalize_area
+from fondo_salario.importers.table import (
+    StructurePlan,
+    WorkersPlan,
+    key,
+    plan_structure,
+    plan_workers,
+    read_structure,
+    read_workers,
+    write_template,
+)
 from fondo_salario.persistence.sqlite_repo import Project, ProjectStore
-
-DEFAULT_CONTRIBUTION = 3
 
 
 @dataclass
 class ImportSummary:
-    added: int = 0  # workers added
+    """What an import added; existing records are never changed."""
+
+    workers_added: int = 0
     areas_added: int = 0
     positions_added: int = 0
-    completed: int = 0  # values of existing records filled in automatically
-    overwritten: int = 0  # differing values replaced after the user accepted them
-    kept: int = 0  # differing values the user decided to keep
-    unchanged: int = 0  # records of the file that were already complete
-    records_updated: int = 0
-    defaults_used: int = 0
-    undefined: int = 0  # imported without salary group or seniority; they must be completed by hand
-    areas_created: list[str] = field(default_factory=list)
-    skipped: list[str] = field(default_factory=list)
-
-
-WorkerImportSummary = ImportSummary  # earlier name
+    unchanged: int = 0  # records of the file that were already stored
+    skipped: list[str] = field(default_factory=list)  # rows that could not be used, with the reason
 
 
 class Controller:
@@ -118,120 +115,68 @@ class Controller:
         self._store.delete_worker(worker_id)
         self.refresh()
 
-    # -- imports (merge into existing data) --------------------------------------------------
-    def plan_workers_import(
-        self,
-        rows: list[WorkerRow],
-        create_missing_areas: bool = False,
-        allow_undefined: bool = False,
-    ) -> ImportPlan:
-        """What importing these workers would do. Areas match ignoring number prefixes («3.- Dir» = «Dir»).
-
-        With `allow_undefined`, a missing salary group or seniority is stored as 0 («sin definir»): the
-        calculation then reports the worker and pays 0.00 until the data is completed.
-        """
+    # -- imports (fixed structure, add-only) -------------------------------------------------
+    def plan_workers_import(self, path: str | Path) -> WorkersPlan:
+        """What importing this file would add. Raises ImportFormatError when the structure is wrong."""
         p = self.project
-        return plan_workers(rows, p.areas, p.workers, create_missing_areas, allow_undefined)
+        return plan_workers(read_workers(path), p.areas, p.workers)
 
-    def plan_structure_import(self, rows: list[AreaRow]) -> ImportPlan:
-        return plan_structure(rows, self.project.areas, self.project.positions)
+    def plan_structure_import(self, path: str | Path) -> StructurePlan:
+        p = self.project
+        return plan_structure(read_structure(path), p.areas, p.positions)
 
-    def apply_import(self, plan: ImportPlan) -> ImportSummary:
-        """Store the plan: add what is new, complete what is empty, apply the differences the user accepted.
-
-        Differences that were not accepted (`accept` is not True) keep the stored value. Nothing is deleted.
-        """
-        settings = self.project.settings
-        full_period = settings.expected_days_per_month * settings.months_paid
-        summary = ImportSummary(
-            unchanged=plan.unchanged, skipped=list(plan.skipped), undefined=plan.undefined
-        )
-        created: dict[str, Area] = {}
-
-        def area_id_for(ref: int | str) -> int:
-            if isinstance(ref, int):
-                return ref
-            key = normalize_area(ref)
-            if key not in created:
-                created[key] = self._store.add_area(ref)
-                summary.areas_created.append(ref)
-            return created[key].id
-
-        for new in plan.new_workers:
-            row = new.row
+    def apply_workers_import(self, plan: WorkersPlan) -> ImportSummary:
+        """Add the new workers (without the right to collect unless the file says so)."""
+        areas = {key(a.name): a.id for a in self.project.areas}
+        for row in plan.new:
             self._store.add_worker(
                 Worker(
                     id=0,
-                    full_name=row.full_name,
+                    full_name=row.name,
                     national_id=row.national_id,
-                    area_id=area_id_for(new.area),
+                    area_id=areas[key(row.area)],
                     position_name=row.position,
-                    salary_group=row.salary_group or 0,
-                    seniority_years=row.seniority_years or 0,
-                    days_worked=full_period if row.days_worked is None else row.days_worked,
-                    contribution=DEFAULT_CONTRIBUTION if row.contribution is None else row.contribution,
-                    eligible=False,  # the right to collect is granted by hand, worker by worker
+                    salary_group=row.salary_group,
+                    seniority_years=row.seniority_years,
+                    days_worked=row.days_worked,
+                    contribution=row.contribution,
+                    eligible=row.eligible,
                 )
             )
-            summary.added += 1
-            summary.defaults_used += int(new.defaulted)
-        for area_row in plan.new_areas:
-            area = self._store.add_area(area_row.name)
-            summary.areas_added += 1
-            for p in area_row.positions:
-                self._add_imported_position(area.id, p)
-                summary.positions_added += 1
-        for new_position in plan.new_positions:
-            self._add_imported_position(new_position.area_id, new_position.row)
-            summary.positions_added += 1
-
-        workers = {w.id: w for w in self.project.workers}
-        positions = {p.id: p for p in self.project.positions}
-        for item in plan.items:
-            changes = dict(item.fills)
-            summary.completed += len(item.fills)
-            for diff in item.conflicts:
-                if diff.accept:
-                    changes[diff.key] = diff.value
-                    summary.overwritten += 1
-                else:
-                    summary.kept += 1
-            if not changes:
-                continue
-            summary.records_updated += 1
-            if item.kind == "worker":
-                if "area_id" in changes:
-                    changes["area_id"] = area_id_for(changes["area_id"])
-                self._store.update_worker(replace(workers[item.target_id], **changes))
-            else:
-                position = positions[item.target_id]
-                if "vacant" in changes:
-                    changes["approved"] = max(position.approved, changes["vacant"])
-                self._store.update_position(replace(position, **changes))
         self.refresh()
-        return summary
-
-    def _add_imported_position(self, area_id: int, row) -> None:
-        self._store.add_position(
-            Position(0, area_id, row.name, row.vacant, row.vacant, 0, row.salary, row.months_unexecuted)
+        return ImportSummary(
+            workers_added=len(plan.new), unchanged=plan.unchanged, skipped=list(plan.skipped)
         )
 
-    def import_structure(self, rows: list[AreaRow]) -> int:
-        """Non-interactive import (keeps stored values on differences). Returns the number of new areas."""
-        plan = self.plan_structure_import(rows)
-        resolve(plan, "keep_all")
-        return self.apply_import(plan).areas_added
+    def apply_structure_import(self, plan: StructurePlan) -> ImportSummary:
+        """Add the new areas and positions."""
+        areas = {key(a.name): a.id for a in self.project.areas}
+        for name in plan.new_areas:
+            areas[key(name)] = self._store.add_area(name).id
+        for row in plan.new_positions:
+            self._store.add_position(
+                Position(
+                    0,
+                    areas[key(row.area)],
+                    row.position,
+                    row.approved,
+                    row.vacant,
+                    row.temp_vacant,
+                    row.salary,
+                    row.months_unexecuted,
+                    row.distribute,
+                )
+            )
+        self.refresh()
+        return ImportSummary(
+            areas_added=len(plan.new_areas),
+            positions_added=len(plan.new_positions),
+            unchanged=plan.unchanged,
+            skipped=list(plan.skipped),
+        )
 
-    def import_workers(
-        self,
-        rows: list[WorkerRow],
-        create_missing_areas: bool = False,
-        allow_undefined: bool = False,
-    ) -> ImportSummary:
-        """Non-interactive import (keeps stored values on differences)."""
-        plan = self.plan_workers_import(rows, create_missing_areas, allow_undefined)
-        resolve(plan, "keep_all")
-        return self.apply_import(plan)
+    def save_template(self, path: str | Path) -> None:
+        write_template(path)
 
     # -- export -------------------------------------------------------------------------
     def export(self, path: str | Path) -> None:

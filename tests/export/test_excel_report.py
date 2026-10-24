@@ -36,7 +36,14 @@ def test_roman_numerals():
 
 def test_sheets_exist(tmp_path):
     wb, _ = build(tmp_path)
-    assert wb.sheetnames == ["Hoja 1 - Montos por área", "Hoja 2 - Coeficientes", "Pre-nómina", "Parámetros"]
+    assert wb.sheetnames == [
+        "Hoja 1 - Montos por área",
+        "Hoja 2 - Coeficientes",
+        "Pre-nómina",
+        "Parámetros",
+        "Trabajadores",
+        "Áreas y cargos",
+    ]
 
 
 def test_prenomina_lists_every_worker_and_total(tmp_path):

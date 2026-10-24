@@ -49,6 +49,17 @@ import buttons, fuzzy area matching, honest report of what was read/ignored. Fol
 - [x] T20b Review advisories fixed (name-of-area columns, roster footers/vacants, strict structure matching), plain areas table on its own sheet/CSV, wrong-file hints — 182 tests
 - [x] T21 Merged to main and released as v0.1.5
 
+## Iteration 6 (user: generic/smart import keeps failing -> fixed structure, add-only)
+Decision (user): the import has ONE predefined structure, the same as the app's tables; the file must comply, otherwise
+the import stops with a clear message. A new record is added; existing ones are never touched (no join, no questions).
+The Excel report also carries both tables in that exact structure (export -> import round trip) and a blank template can
+be saved. Replaces the heuristic readers (legacy, roster, fuzzy matching) and the merge dialogs.
+Branch `feat/strict-import`.
+- [x] T22 `importers/table.py`: structure constants, template writer, strict readers + add-only plans, tests
+- [x] T23 Controller + UI: import buttons, template buttons, summary confirm; remove old importers/dialogs; tests
+- [x] T24 Excel report: «Trabajadores» and «Áreas y cargos» sheets in import structure; round-trip test; README/SPEC
+- [ ] T25 (verified: 138 tests, ruff, e2e script in clean project, selftest; release pending OK) Verify (pytest, ruff, real flow incl. export->import in a clean project), merge + release (needs user OK)
+
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
 - Pre-nomina lists every worker, 0.00 for non-paid.
