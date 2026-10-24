@@ -15,7 +15,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from fondo_salario.importers.workers import _normalize_header
+from fondo_salario.importers.workers import _normalize_header, pick_table, roster_entries
 
 AREA_HEADER = re.compile(r"^\s*(\d+)\s*[.\-]")
 
@@ -54,9 +54,43 @@ def _clean_area_name(text: str) -> str:
     return re.sub(r"^\s*\d+\s*[.\-]+\s*", "", text).strip()
 
 
+def read_roster_structure(path: str | Path) -> list[AreaRow] | None:
+    """Areas and positions from a staffing roster (one row per position; rows without a worker are vacant)."""
+    picked = pick_table(Path(path))
+    if picked is None or "roster" not in picked[3]:
+        return None
+    _, table, header, columns = picked
+    areas: dict[str, AreaRow] = {}
+    for _line, area, title, name, _national_id, _group in roster_entries(table, header, columns):
+        if not area:
+            continue
+        current = areas.setdefault(area, AreaRow(len(areas) + 1, area))
+        if title is None:
+            continue
+        position = next(
+            (p for p in current.positions if _normalize_header(p.name) == _normalize_header(title)), None
+        )
+        if position is None:
+            position = PositionRow(title)
+            current.positions.append(position)
+        position.vacant += int(not name)
+    return list(areas.values())
+
+
+def _has_legacy_sheet(workbook) -> bool:
+    return any(
+        "monto" in _normalize_header(s.title) and "area" in _normalize_header(s.title)
+        for s in workbook.worksheets
+    )
+
+
 def read_structure(path: str | Path, sheet: str | None = None) -> list[AreaRow]:
     workbook = load_workbook(Path(path), read_only=True, data_only=True)
     try:
+        if sheet is None and not _has_legacy_sheet(workbook):
+            roster = read_roster_structure(path)
+            if roster is not None:
+                return roster
         worksheet = workbook[sheet] if sheet else _pick_sheet(workbook)
         areas: list[AreaRow] = []
         by_number: dict[int, AreaRow] = {}

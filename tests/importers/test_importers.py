@@ -47,7 +47,7 @@ def test_invalid_rows_are_reported_not_raised(tmp_path):
 def test_missing_required_columns(tmp_path):
     path = tmp_path / "w.csv"
     path.write_text("foo,bar\n1,2\n", encoding="utf-8")
-    assert "missing required columns" in read_workers(path).errors[0].message
+    assert "no se encontró una fila de títulos" in read_workers(path).errors[0].message
 
 
 def test_xlsx_numeric_id_keeps_leading_zeros(tmp_path):

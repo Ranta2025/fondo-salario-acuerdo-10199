@@ -11,38 +11,36 @@ from pathlib import Path
 
 ROMAN = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
 
-FIELD_ALIASES = {
-    "full_name": {
-        "nombre",
-        "nombreyapellidos",
-        "nombrecompleto",
-        "trabajador",
-        "name",
-        "fullname",
-    },
-    "national_id": {
-        "ci",
-        "carne",
-        "carneidentidad",
-        "carnedeidentidad",
-        "identidad",
-        "nationalid",
-        "id",
-    },
-    "area": {"area", "departamento"},
-    "position": {"cargo", "plaza", "puesto", "position"},
-    "salary_group": {"grupo", "gruposalarial", "grupoescala", "salarygroup"},
-    "seniority_years": {
-        "antiguedad",
-        "anos",
-        "aniosantiguedad",
-        "seniority",
-        "seniorityyears",
-    },
-    "days_worked": {"dias", "diastrabajados", "tiempotrabajado", "daysworked"},
-    "contribution": {"contribucion", "evaluacion", "contribution"},
-}
-REQUIRED = ("full_name", "area")
+HEADER_SCAN_ROWS = 30  # the titles may be preceded by blank rows or a heading
+MIN_HEADER_SCORE = 2
+
+
+def header_role(key: str) -> str | None:
+    """Field a normalized column title stands for (letters and digits only), or None."""
+    if "area" in key and "cargo" in key:
+        return "roster"  # one column holding area rows and position rows
+    if "carne" in key or "identidad" in key or key in {"ci", "id", "nationalid"}:
+        return "national_id"
+    if (
+        key.startswith("nombre")
+        or "apellidos" in key
+        or key.startswith("trabajador")
+        or key in {"name", "fullname"}
+    ):
+        return "full_name"
+    if key.startswith("cargo") or key in {"plaza", "puesto", "ocupacion", "position"}:
+        return "position"
+    if key in {"area", "departamento", "unidad", "dependencia"} or key.startswith("areade"):
+        return "area"
+    if key.startswith("grupo") or "escala" in key or key == "salarygroup":
+        return "salary_group"
+    if "antigu" in key or key in {"anos", "anios", "seniority", "seniorityyears"}:
+        return "seniority_years"
+    if "dias" in key or key.startswith("tiempotrab") or key == "daysworked":
+        return "days_worked"
+    if "contribu" in key or "evaluacion" in key or "desempe" in key:
+        return "contribution"
+    return None
 
 
 @dataclass
@@ -68,7 +66,8 @@ class RowError:
 class WorkerImportResult:
     rows: list[WorkerRow] = field(default_factory=list)
     errors: list[RowError] = field(default_factory=list)
-    legacy: bool = False  # read from the old per-worker sheet (areas come from its header rows)
+    legacy: bool = False  # read from a layout whose areas come from the file itself (create missing ones)
+    notes: list[str] = field(default_factory=list)  # what was read and what was ignored
 
 
 def _normalize_header(value: object) -> str:
@@ -79,11 +78,23 @@ def _normalize_header(value: object) -> str:
 def _map_headers(headers: list[object]) -> dict[str, int]:
     mapping: dict[str, int] = {}
     for index, header in enumerate(headers):
-        key = _normalize_header(header)
-        for field_name, aliases in FIELD_ALIASES.items():
-            if key in aliases and field_name not in mapping:
-                mapping[field_name] = index
+        role = header_role(_normalize_header(header)) if header not in (None, "") else None
+        if role and role not in mapping:
+            mapping[role] = index
     return mapping
+
+
+def find_header(table: list[list[object]]) -> tuple[int, dict[str, int]] | None:
+    """The row (within the first rows) whose titles match the most known columns, if it matches enough."""
+    best: tuple[int, int, dict[str, int]] | None = None
+    for index, row in enumerate(table[:HEADER_SCAN_ROWS]):
+        mapping = _map_headers(row)
+        identifies = mapping.keys() & {"full_name", "national_id", "roster"}
+        if not identifies or len(mapping) < MIN_HEADER_SCORE:
+            continue
+        if best is None or len(mapping) > best[0]:
+            best = (len(mapping), index, mapping)
+    return None if best is None else (best[1], best[2])
 
 
 def parse_roman(text: str) -> int | None:
@@ -160,13 +171,17 @@ def _build_row(raw: list[object], columns: dict[str, int]) -> WorkerRow:
     )
 
 
-def _read_table(path: Path) -> list[list[object]]:
+def read_tables(path: Path) -> list[tuple[str, list[list[object]]]]:
+    """Every sheet of a workbook (or the single CSV table) as (name, rows)."""
     if path.suffix.lower() in {".xlsx", ".xlsm"}:
         from openpyxl import load_workbook
 
         workbook = load_workbook(path, read_only=True, data_only=True)
         try:
-            return [list(row) for row in workbook.worksheets[0].iter_rows(values_only=True)]
+            return [
+                (ws.title, [list(row) for row in ws.iter_rows(values_only=True)])
+                for ws in workbook.worksheets
+            ]
         finally:
             workbook.close()
     raw = path.read_bytes()
@@ -175,34 +190,111 @@ def _read_table(path: Path) -> list[list[object]]:
     except UnicodeDecodeError:  # CSV saved by Excel on Windows
         text = raw.decode("cp1252", errors="replace")
     sample = text[:4096]
-    dialect = csv.Sniffer().sniff(sample, delimiters=",;\t") if sample else csv.excel
-    return [list(row) for row in csv.reader(io.StringIO(text, newline=""), dialect)]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t") if sample else csv.excel
+    except csv.Error:
+        dialect = csv.excel
+    return [("", [list(row) for row in csv.reader(io.StringIO(text, newline=""), dialect)])]
+
+
+def pick_table(path: Path) -> tuple[str, list[list[object]], int, dict[str, int]] | None:
+    """The sheet (and header row) that looks most like a table of workers or a staffing roster."""
+    best = None
+    for name, table in read_tables(path):
+        found = find_header(table)
+        if found is not None and (best is None or len(found[1]) > len(best[3])):
+            best = (name, table, found[0], found[1])
+    return best
+
+
+ROLE_LABELS = {
+    "full_name": "Nombre",
+    "national_id": "Carné",
+    "area": "Área",
+    "position": "Cargo",
+    "salary_group": "Grupo",
+    "seniority_years": "Antigüedad",
+    "days_worked": "Días trabajados",
+    "contribution": "Contribución",
+    "roster": "Áreas y cargos",
+}
+
+
+def _describe(sheet: str, columns: dict[str, int]) -> str:
+    used = ", ".join(ROLE_LABELS[k] for k in ROLE_LABELS if k in columns)
+    return f"Columnas reconocidas{f' en la hoja «{sheet}»' if sheet else ''}: {used}."
 
 
 def read_workers(path: str | Path) -> WorkerImportResult:
-    """Read workers; invalid rows are reported in `errors`, never raised."""
-    table = _read_table(Path(path))
+    """Read workers from the best-matching table; invalid rows are reported in `errors`, never raised."""
+    picked = pick_table(Path(path))
     result = WorkerImportResult()
-    if not table:
-        result.errors.append(RowError(1, "the file is empty"))
+    if picked is None:
+        result.errors.append(
+            RowError(
+                1,
+                "no se encontró una fila de títulos (se esperan columnas como Nombre, Carné, Área, Grupo)",
+            )
+        )
         return result
-    columns = _map_headers(table[0])
-    missing = [name for name in REQUIRED if name not in columns]
-    if missing:
-        result.errors.append(RowError(1, f"missing required columns: {', '.join(missing)}"))
+    sheet, table, header, columns = picked
+    result.notes.append(_describe(sheet, columns))
+    if "roster" in columns:
+        result.legacy = True
+        _read_roster_rows(table, header, columns, result)
         return result
-    for line, raw in enumerate(table[1:], start=2):
+    for line, raw in enumerate(table[header + 1 :], start=header + 2):
         if all(_clean_text(value) == "" for value in raw):
             continue
         try:
             row = _build_row(raw, columns)
-            if not row.full_name or not row.area:
-                raise ValueError("name and area are required")
+            if not row.full_name:
+                raise ValueError("falta el nombre")
         except ValueError as error:
             result.errors.append(RowError(line, str(error)))
             continue
         result.rows.append(row)
     return result
+
+
+def roster_entries(table: list[list[object]], header: int, columns: dict[str, int]):
+    """Rows of a staffing roster as (line, area, title, worker name, id, group text).
+
+    A row with only the first column starts a new area (reported once with title None); any other row is a
+    position, filled when it has a worker name and vacant otherwise.
+    """
+    area = ""
+    for line, raw in enumerate(table[header + 1 :], start=header + 2):
+
+        def cell(key: str, raw=raw) -> str:
+            col = columns.get(key)
+            return _clean_text(raw[col]) if col is not None and col < len(raw) else ""
+
+        title, name, group = cell("roster"), cell("full_name"), cell("salary_group")
+        if not title:
+            continue
+        if not name and not group:
+            area = title
+            yield line, area, None, "", "", ""
+            continue
+        col_id = columns.get("national_id")
+        national_id = _normalize_national_id(raw[col_id]) if col_id is not None and col_id < len(raw) else ""
+        yield line, area, title, name, national_id, group
+
+
+def _read_roster_rows(table, header, columns, result: WorkerImportResult) -> None:
+    for line, area, title, name, national_id, group_text in roster_entries(table, header, columns):
+        if not name:
+            continue  # vacant position
+        group = parse_roman(group_text) if group_text and not group_text.isdigit() else None
+        if group_text.isdigit():
+            group = int(group_text)
+        if group_text and not (group and 1 <= group <= 25):
+            result.notes.append(f"Fila {line}: el grupo «{group_text}» no es válido; se deja sin definir.")
+            group = None
+        result.rows.append(
+            WorkerRow(full_name=name, national_id=national_id, area=area, position=title, salary_group=group)
+        )
 
 
 # -- legacy "Dist.Monto x Trabajador" sheet ---------------------------------------------
@@ -277,77 +369,10 @@ def read_legacy_workers(path: str | Path) -> WorkerImportResult | None:
         workbook.close()
 
 
-def _find_roster_header(sheet):
-    """(row index, {field: column}) of a «Areas y Cargos | Trabajador | Carnet | Grupo» header, if any."""
-    for index, row in enumerate(sheet.iter_rows(max_row=15, values_only=True)):
-        keys = [_normalize_header(c) if c is not None else "" for c in row]
-        columns: dict[str, int] = {}
-        for col, key in enumerate(keys):
-            if "area" in key and "cargo" in key:
-                columns["position"] = col
-            elif key.startswith("trabajador"):
-                columns["name"] = col
-            elif "carnet" in key or "carne" in key:
-                columns["id"] = col
-            elif key.startswith("grupo"):
-                columns["group"] = col
-        if {"position", "name"} <= columns.keys():
-            return index, columns
-    return None
-
-
-def read_roster_workers(path: str | Path) -> WorkerImportResult | None:
-    """Workers from a staffing roster: area rows only have the first column, position rows also have the
-    salary group, and a position row with a worker name is filled. None when no sheet looks like this."""
-    from openpyxl import load_workbook
-
-    workbook = load_workbook(Path(path), read_only=True, data_only=True)
-    try:
-        for sheet in workbook.worksheets:
-            found = _find_roster_header(sheet)
-            if found is None:
-                continue
-            header, cols = found
-            result = WorkerImportResult(legacy=True)
-            area = ""
-            for line, row in enumerate(sheet.iter_rows(values_only=True), start=1):
-                if line <= header + 1:
-                    continue
-
-                def cell(key: str, row=row, cols=cols) -> object:
-                    col = cols.get(key)
-                    return row[col] if col is not None and col < len(row) else None
-
-                title = _clean_text(cell("position"))
-                if not title:
-                    continue
-                group = parse_roman(_clean_text(cell("group"))) if _clean_text(cell("group")) else None
-                if not _clean_text(cell("group")) and not _clean_text(cell("name")):
-                    area = title  # a row with only the first column starts a new area
-                    continue
-                name = _clean_text(cell("name"))
-                if not name:
-                    continue  # vacant position
-                result.rows.append(
-                    WorkerRow(
-                        full_name=name,
-                        national_id=_normalize_national_id(cell("id")),
-                        area=area,
-                        position=title,
-                        salary_group=group if group and 1 <= group <= 25 else None,
-                    )
-                )
-            return result
-        return None
-    finally:
-        workbook.close()
-
-
 def read_workers_auto(path: str | Path) -> WorkerImportResult:
-    """Legacy per-worker sheet or staffing roster when the workbook has one, otherwise a plain table."""
+    """Legacy per-worker sheet when the workbook has one, otherwise the best-matching table or roster."""
     if Path(path).suffix.lower() in {".xlsx", ".xlsm"}:
-        for reader in (read_legacy_workers, read_roster_workers):
-            found = reader(path)
-            if found is not None:
-                return found
+        legacy = read_legacy_workers(path)
+        if legacy is not None:
+            return legacy
     return read_workers(path)

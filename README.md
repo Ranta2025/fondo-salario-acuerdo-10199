@@ -44,6 +44,13 @@ Los pesos (25/40/20/15) y las escalas por defecto siguen el documento «Rafelito
    **completa solo los datos que le faltan** (por ejemplo el carné); y si algún dato **es distinto**, te lo pregunta
    **uno por uno** (sobrescribir o conservar el tuyo) o puedes **aceptarlas todas directamente**. Antes de aplicar
    muestra un resumen y puedes cancelar sin que cambie nada.
+   **Qué archivos entiende:** busca solo la fila de títulos (en cualquier hoja, aunque haya filas vacías arriba) y
+   aprovecha las columnas que reconoce, aunque se llamen distinto («Nombre y Apellidos», «C.I.», «Departamento»…).
+   Con solo nombre y carné completa los carnés que faltan. También lee una **plantilla de cargos** (columna «Áreas y
+   Cargos» con las áreas como filas de título, luego «Trabajador», «Carnet», «Grupo»): trae trabajadores, y desde
+   **Importar áreas y cargos** crea las áreas y los cargos (los cargos sin trabajador cuentan como vacantes). Las
+   áreas con nombre parecido se emparejan solas; las que no se parecen se crean y se listan en el resumen.
+   Al terminar te dice qué columnas leyó y qué filas no pudo usar.
 4. **Resultados**: revisa los montos y las observaciones. Pulsa **Exportar a Excel** para generar el informe
    (montos por área, coeficientes por trabajador, pre-nómina y parámetros usados), listo para imprimir.
 

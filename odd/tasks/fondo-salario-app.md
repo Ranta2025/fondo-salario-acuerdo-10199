@@ -40,6 +40,14 @@ Nothing is deleted. Applies to Excel and CSV imports (workers and areas/position
 - [x] T17 Dialogs: summary + one-by-one conflict dialog with «accept all the rest»; wire both import buttons; window tests
 - [x] T18 Docs + full verification (168 tests); merged to main and released as v0.1.4
 
+## Iteration 5 (user: imports must be as intelligent as possible; real file «Raflito 4.xlsx» was not recognized)
+Branch `fix/import-creates-areas`. Import whatever matches in any table: header row anywhere, any sheet, flexible
+column names, area optional (join ids by name), hierarchical staffing roster (areas/positions/workers) usable from both
+import buttons, fuzzy area matching, honest report of what was read/ignored. Follows the review advisories.
+- [x] T19 Roster reader (workers) + create missing areas for any file + honest "nothing new" message — 171 tests
+- [x] T20 Smart header detection (any sheet/row, flexible names, optional area, notes), roster structure (areas + positions), fuzzy area matching, report of used columns; tests; real-file check — 176 tests; real roster: 86 workers/22 areas/70 positions read, 17 of 21 areas matched to existing ones
+- [ ] T21 Merge, verify, release (needs user OK)
+
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
 - Pre-nomina lists every worker, 0.00 for non-paid.

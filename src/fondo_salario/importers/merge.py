@@ -7,6 +7,8 @@ Nothing is ever deleted. This module is pure (no database, no UI) so it can be t
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -14,7 +16,12 @@ from decimal import Decimal
 from fondo_salario.domain.models import Area, Position, Worker
 from fondo_salario.domain.scales import to_roman
 from fondo_salario.importers.structure import AreaRow, PositionRow
-from fondo_salario.importers.workers import WorkerRow, _normalize_header, normalize_area
+from fondo_salario.importers.workers import (
+    AREA_NUMBER_PREFIX,
+    WorkerRow,
+    _normalize_header,
+    normalize_area,
+)
 
 
 @dataclass
@@ -87,8 +94,32 @@ def _group_text(group: int) -> str:
     return to_roman(group) if 1 <= group <= 25 else "—"
 
 
+AREA_STOPWORDS = {
+    "de",
+    "la",
+    "el",
+    "los",
+    "las",
+    "del",
+    "y",
+    "en",
+    "a",
+    "grupo",
+    "departamento",
+    "dpto",
+    "seccion",
+}
+
+
+def _area_tokens(name: str) -> frozenset[str]:
+    """Distinctive words of an area name: no prefix number, accents, articles or generic words."""
+    text = unicodedata.normalize("NFKD", AREA_NUMBER_PREFIX.sub("", name)).encode("ascii", "ignore").decode()
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return frozenset(w.rstrip("s") if len(w) > 3 else w for w in words if w not in AREA_STOPWORDS)
+
+
 def find_area(name: str, number: int | None, areas: list[Area]) -> Area | None:
-    """Exact name, then one name contained in the other, then the legacy area number."""
+    """Exact name, one name inside the other, the same distinctive words, then the legacy area number."""
     key = normalize_area(name)
     by_name = {normalize_area(a.name): a for a in areas}
     if key in by_name:
@@ -96,6 +127,14 @@ def find_area(name: str, number: int | None, areas: list[Area]) -> Area | None:
     contained = [a for k, a in by_name.items() if len(min(k, key, key=len)) >= 5 and (k in key or key in k)]
     if len(contained) == 1:
         return contained[0]
+    tokens = _area_tokens(name)
+    if tokens:
+        same = [a for a in areas if _area_tokens(a.name) == tokens]
+        if len(same) == 1:
+            return same[0]
+        overlap = [a for a in areas if (t := _area_tokens(a.name)) and (t < tokens or tokens < t)]
+        if len(overlap) == 1 and not same:
+            return overlap[0]
     if number and 1 <= number <= len(areas):
         return areas[number - 1]
     return None
@@ -146,7 +185,8 @@ def plan_workers(
         elif create_missing_areas and row.area.strip():
             area_ref = row.area.strip()
         else:
-            plan.skipped.append(f"{row.full_name}: área desconocida «{row.area}»")
+            reason = f"área desconocida «{row.area}»" if row.area.strip() else "no trae el área"
+            plan.skipped.append(f"{row.full_name}: {reason}")
             continue
         incomplete = row.salary_group is None or row.seniority_years is None
         if incomplete and not allow_undefined:
@@ -246,9 +286,8 @@ def _record(item: MergeItem, key: str, label: str, current: str, incoming: str, 
 # -- areas and positions ---------------------------------------------------------------------
 def plan_structure(rows: list[AreaRow], areas: list[Area], positions: list[Position]) -> ImportPlan:
     plan = ImportPlan("structure")
-    by_name = {normalize_area(a.name): a for a in areas}
     for area_row in rows:
-        area = by_name.get(normalize_area(area_row.name))
+        area = find_area(area_row.name, None, areas)
         if area is None:
             plan.new_areas.append(area_row)
             continue

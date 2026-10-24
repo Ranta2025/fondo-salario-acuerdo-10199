@@ -129,7 +129,9 @@ def run_import(parent: tk.Misc, ctl: Controller, plan: ImportPlan) -> ImportSumm
     return ctl.apply_import(plan)
 
 
-def import_report(summary: ImportSummary, errors: list[str], workers: bool) -> str:
+def import_report(
+    summary: ImportSummary, errors: list[str], workers: bool, notes: list[str] | None = None
+) -> str:
     """Plain-Spanish result of an import."""
     lines = ["Importación terminada."]
     if workers and summary.added:
@@ -158,6 +160,7 @@ def import_report(summary: ImportSummary, errors: list[str], workers: bool) -> s
         )
     if workers and summary.added:
         lines.append("\nMárquelos en esta pestaña con «Dar derecho a cobro».")
+    lines.extend(f"• {note}" for note in (notes or [])[:8])
     problems = errors + summary.skipped
     if problems:
         lines.append(f"\nNo se importaron {len(problems)} filas:")
@@ -167,7 +170,7 @@ def import_report(summary: ImportSummary, errors: list[str], workers: bool) -> s
     return "\n".join(lines)
 
 
-def nothing_new_text(plan: ImportPlan, errors: list[str]) -> str:
+def nothing_new_text(plan: ImportPlan, errors: list[str], notes: list[str] | None = None) -> str:
     problems = errors + plan.skipped
     if plan.unchanged or not problems:
         text = "No hay nada nuevo: todos los datos del archivo ya estaban registrados y completos."
@@ -175,6 +178,8 @@ def nothing_new_text(plan: ImportPlan, errors: list[str]) -> str:
         text = "No se pudo importar ninguna fila del archivo."
     if problems:
         text += f"\n\nNo se pueden importar {len(problems)} filas:\n" + "\n".join(problems[:15])
+    if notes:
+        text += "\n\n" + "\n".join(notes[:8])
     return text
 
 
@@ -572,6 +577,11 @@ class StructureTab(ttk.Frame):
         except Exception as error:  # unreadable or unexpected workbook
             messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
             return
+        if not areas:
+            messagebox.showinfo(
+                "Importar", "No se reconoció ninguna área ni cargo en el archivo.", parent=self
+            )
+            return
         if not (plan.new_count or plan.fill_count or plan.conflicts):
             messagebox.showinfo("Importar", nothing_new_text(plan, []), parent=self)
             return
@@ -825,17 +835,17 @@ class WorkersTab(ttk.Frame):
         except Exception as error:  # unreadable file
             messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
             return
-        plan = self.app.ctl.plan_workers_import(
-            read.rows, create_missing_areas=True, allow_undefined=read.legacy
-        )
+        plan = self.app.ctl.plan_workers_import(read.rows, create_missing_areas=True, allow_undefined=True)
         errors = [f"Fila {e.line}: {e.message}" for e in read.errors]
         if not (plan.new_count or plan.fill_count or plan.conflicts):
-            messagebox.showinfo("Importar", nothing_new_text(plan, errors), parent=self)
+            messagebox.showinfo("Importar", nothing_new_text(plan, errors, read.notes), parent=self)
             return
         summary = run_import(self, self.app.ctl, plan)
         if summary is None:
             return
-        messagebox.showinfo("Importar", import_report(summary, errors, workers=True), parent=self)
+        messagebox.showinfo(
+            "Importar", import_report(summary, errors, workers=True, notes=read.notes), parent=self
+        )
         self.app.changed()
 
 
