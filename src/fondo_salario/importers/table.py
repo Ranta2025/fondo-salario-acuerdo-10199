@@ -280,6 +280,10 @@ def read_structure(path: str | Path) -> ReadResult:
             row.salary = _money(cell("Salario"))
             row.months_unexecuted = _number(cell("Meses"), "los meses", 0, 120, required=False) or 0
             total = row.vacant + row.temp_vacant
+            if total > row.approved:
+                raise ValueError(
+                    f"las vacantes y temporales ({total}) superan las plazas aprobadas ({row.approved})"
+                )
             if row.distribute is not None and row.distribute > total:
                 raise ValueError(
                     f"las vacantes a distribuir ({row.distribute}) superan las vacantes ({total})"

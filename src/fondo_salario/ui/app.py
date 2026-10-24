@@ -1040,12 +1040,9 @@ class App(tk.Tk):
         file_menu.add_command(label="Exportar a Excel…", command=self.export)
         file_menu.add_command(label="Guardar plantilla de importación…", command=self.save_template)
         file_menu.add_separator()
+        file_menu.add_command(label="Vaciar trabajadores…", command=lambda: self.clear("3. Trabajadores"))
         file_menu.add_command(
-            label="Vaciar trabajadores…", command=lambda: self.tabs["3. Trabajadores"].clear_all()
-        )
-        file_menu.add_command(
-            label="Vaciar áreas, cargos y trabajadores…",
-            command=lambda: self.tabs["2. Áreas y cargos"].clear_all(),
+            label="Vaciar áreas, cargos y trabajadores…", command=lambda: self.clear("2. Áreas y cargos")
         )
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.on_close)
@@ -1217,6 +1214,10 @@ class App(tk.Tk):
             )
             return
         messagebox.showinfo("Exportar", f"Informe guardado en:\n{path}", parent=self)
+
+    def clear(self, tab: str) -> None:
+        if self.ctl is not None:
+            self.tabs[tab].clear_all()
 
     def save_template(self) -> None:
         if self.ctl is None:

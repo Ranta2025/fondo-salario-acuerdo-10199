@@ -345,3 +345,8 @@ def test_numeric_salary_cells_are_not_guessed_from_text():
     from fondo_salario.importers.table import _money
 
     assert _money(1.234) == D("1.234") and _money(606.125) == D("606.125") and _money(2200) == D("2200")
+
+
+def test_vacancies_cannot_exceed_the_approved_positions(tmp_path):
+    result = read_structure(book(tmp_path, structure=[["Dir", "Jefe", 1, 1, 1, None, 100, 1]]))
+    assert result.rows == [] and "superan las plazas aprobadas" in result.errors[0]
