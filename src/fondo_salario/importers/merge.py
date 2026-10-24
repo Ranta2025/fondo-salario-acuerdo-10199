@@ -133,7 +133,7 @@ def find_area(name: str, number: int | None, areas: list[Area], loose: bool = Tr
         if len(same) == 1:
             return same[0]
         overlap = [a for a in areas if (t := _area_tokens(a.name)) and (t < tokens or tokens < t)]
-        if len(overlap) == 1 and not same:
+        if loose and len(overlap) == 1 and not same:
             return overlap[0]
     if number and 1 <= number <= len(areas):
         return areas[number - 1]

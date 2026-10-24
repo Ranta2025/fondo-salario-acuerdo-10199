@@ -210,3 +210,39 @@ def test_structure_matching_is_strict_about_partial_names():
     areas = [Area(1, "Subdirección", 1)]
     assert find_area("Dirección", None, areas) is not None  # loose (workers/legacy)
     assert find_area("Dirección", None, areas, loose=False) is None
+
+
+def test_worker_table_is_not_mistaken_for_an_areas_table(tmp_path):
+    from fondo_salario.importers.structure import looks_like
+
+    path = _book(
+        tmp_path,
+        {"H": [["Nombre", "Carné", "Área", "Cargo", "Grupo"], ["Ana Uno", "1", "Dirección", "Jefe", "XII"]]},
+    )
+    assert looks_like(path) == "workers"
+
+
+def test_roster_worker_without_position_is_reported(tmp_path):
+    from fondo_salario.importers.workers import read_workers_auto
+
+    path = _book(
+        tmp_path,
+        {
+            "H": [
+                [None, "Areas y Cargos", "Trabajador", "Carnet", "Grupo"],
+                [None, "Dirección"],
+                [None, None, "Ana Uno", "1", "XII"],
+            ]
+        },
+    )
+    result = read_workers_auto(path)
+    assert result.rows == [] and "no tiene cargo" in result.errors[0].message
+
+
+def test_strict_structure_matching_does_not_use_the_partial_word_rule():
+    from fondo_salario.domain.models import Area
+    from fondo_salario.importers.merge import find_area
+
+    areas = [Area(1, "Dirección Provincial", 1)]
+    assert find_area("Dirección", None, areas) is not None
+    assert find_area("Dirección", None, areas, loose=False) is None

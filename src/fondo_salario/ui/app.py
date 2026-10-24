@@ -1182,7 +1182,7 @@ class App(tk.Tk):
             title="Guardar informe de Excel",
             defaultextension=".xlsx",
             initialfile="fondo-de-salario.xlsx",
-            filetypes=[("Excel o CSV", "*.xlsx *.csv"), ("Todos", "*.*")],
+            filetypes=[("Excel", "*.xlsx")],
         )
         if not path:
             return

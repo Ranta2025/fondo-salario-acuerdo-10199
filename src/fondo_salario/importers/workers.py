@@ -105,7 +105,7 @@ def find_header(table: list[list[object]], kind: str = "workers") -> tuple[int, 
     for index, row in enumerate(table[:HEADER_SCAN_ROWS]):
         mapping = _map_headers(row)
         if kind == "structure":
-            ok = STRUCTURE_KEYS <= mapping.keys()
+            ok = STRUCTURE_KEYS <= mapping.keys() and not mapping.keys() & {"full_name", "national_id"}
         else:
             ok = bool(mapping.keys() & WORKER_KEYS) and len(mapping) >= MIN_HEADER_SCORE
         if ok and (best is None or len(mapping) > best[0]):
@@ -291,6 +291,8 @@ def roster_entries(table: list[list[object]], header: int, columns: dict[str, in
 
         title, name, group = cell("roster"), cell("full_name"), cell("salary_group")
         if not title:
+            if name:
+                yield line, area, None, name, "", ""  # a worker without position: reported by the caller
             continue
         key = _normalize_header(title)
         if (
@@ -315,6 +317,9 @@ def _read_roster_rows(table, header, columns, result: WorkerImportResult) -> Non
     for line, area, title, name, national_id, group_text in roster_entries(table, header, columns):
         if not name:
             continue  # vacant position
+        if title is None:
+            result.errors.append(RowError(line, f"«{name}» no tiene cargo en la columna de áreas y cargos"))
+            continue
         group = parse_roman(group_text) if group_text and not group_text.isdigit() else None
         if group_text.isdigit():
             group = int(group_text)
