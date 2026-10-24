@@ -189,17 +189,13 @@ def _yes_no(value: object) -> bool:
 
 def _money(value: object) -> Decimal:
     """Amount; a lone separator followed by exactly three digits is thousands, otherwise decimals."""
-    text = clean(value).replace(" ", "")
-    if not text:
-        return Decimal(0)
-    if "," in text and "." in text:  # the last one is the decimal separator
-        decimal = "," if text.rfind(",") > text.rfind(".") else "."
-        thousands = "." if decimal == "," else ","
-        text = text.replace(thousands, "").replace(decimal, ".")
-    elif re.fullmatch(r"\d{1,3}([.,]\d{3})+", text):
-        text = re.sub(r"[.,]", "", text)
+    if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+        text = str(value)  # a real number cell has no separator ambiguity: 1.234 is one and a bit
     else:
-        text = text.replace(",", ".")
+        text = clean(value).replace(" ", "")
+        if not text:
+            return Decimal(0)
+        text = _text_amount(text)
     try:
         amount = Decimal(text)
     except InvalidOperation:
@@ -207,6 +203,17 @@ def _money(value: object) -> Decimal:
     if not amount.is_finite() or amount < 0:
         raise ValueError(f"el salario debe ser un número positivo («{text}»)")
     return amount
+
+
+def _text_amount(text: str) -> str:
+    """Typed amount as a plain decimal string."""
+    if "," in text and "." in text:  # the last one is the decimal separator
+        decimal = "," if text.rfind(",") > text.rfind(".") else "."
+        thousands = "." if decimal == "," else ","
+        return text.replace(thousands, "").replace(decimal, ".")
+    if re.fullmatch(r"\d{1,3}([.,]\d{3})+", text):
+        return re.sub(r"[.,]", "", text)
+    return text.replace(",", ".")
 
 
 def read_workers(path: str | Path) -> ReadResult:

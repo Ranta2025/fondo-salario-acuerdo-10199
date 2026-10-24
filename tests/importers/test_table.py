@@ -339,3 +339,9 @@ def test_roman_numerals_must_be_well_formed(text, value):
     from fondo_salario.domain.scales import parse_roman
 
     assert parse_roman(text) == value
+
+
+def test_numeric_salary_cells_are_not_guessed_from_text():
+    from fondo_salario.importers.table import _money
+
+    assert _money(1.234) == D("1.234") and _money(606.125) == D("606.125") and _money(2200) == D("2200")
