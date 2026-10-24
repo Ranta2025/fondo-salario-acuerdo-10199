@@ -165,7 +165,9 @@ def test_template_has_only_titles_and_instructions(tmp_path):
     wb = load_workbook(path)
     assert wb.sheetnames == [WORKERS_SHEET, STRUCTURE_SHEET, "Instrucciones"]
     assert [c.value for c in wb[WORKERS_SHEET][1]] == WORKERS_COLUMNS
-    assert wb[WORKERS_SHEET].max_row == 1 and wb[STRUCTURE_SHEET].max_row == 1
+    for name in (WORKERS_SHEET, STRUCTURE_SHEET):
+        assert all(c.value is None for row in wb[name].iter_rows(min_row=2) for c in row)
+    assert wb[WORKERS_SHEET]["B2"].number_format == "@"  # IDs typed later keep their leading zeros
     assert read_workers(path).rows == [] and read_structure(path).rows == []
 
 
@@ -230,3 +232,62 @@ def test_exported_report_can_be_imported_into_an_empty_project(tmp_path):
         again = target.plan_workers_import(report)
         assert again.new == [] and again.unchanged == 2  # a second import adds nothing
         assert target.plan_structure_import(report).new_positions == []
+
+
+def test_csv_with_semicolons_and_windows_encoding_is_read(tmp_path):
+    path = tmp_path / "w.csv"
+    header = ";".join(WORKERS_COLUMNS)
+    path.write_bytes(f"{header}\nJosé Peña;00112233445;Dir;;XII;5;72;3;Sí\n".encode("cp1252"))
+    (row,) = read_workers(path).rows
+    assert (row.name, row.national_id, row.salary_group, row.eligible) == (
+        "José Peña",
+        "00112233445",
+        12,
+        True,
+    )
+
+
+def test_strange_numbers_are_row_errors_and_never_abort_the_read(tmp_path):
+    rows = [
+        ANA,
+        ["Beto", "", "Dir", "", "III", "inf", 72, 4, "No"],
+        ["Carla", "", "Dir", "", "III", "nan", 72, 4, "No"],
+        ["Dani", "", "Dir", "", "III", "1e3", 72, 4, "No"],
+    ]
+    result = read_workers(book(tmp_path, workers=rows))
+    assert [r.name for r in result.rows] == ["Ana Uno"] and len(result.errors) == 3
+    structure = read_structure(
+        book(
+            tmp_path,
+            structure=[
+                ["Dir", "Jefe", 1, 1, 0, None, "Infinity", 1],
+                ["Dir", "Otro", 1, 1, 0, None, "NaN", 1],
+            ],
+        )
+    )
+    assert structure.rows == [] and len(structure.errors) == 2
+
+
+def test_same_name_with_a_different_id_is_another_person(tmp_path):
+    from fondo_salario.domain.models import Area
+
+    areas = [Area(1, "Dir", 1)]
+    existing = [Worker(1, "Ana Uno", "111", 1, 12, 5, 72, 3)]
+    rows = [
+        ["Ana Uno", "222", "Dir", "", "XII", 5, 72, 3, "No"],
+        ["Ana Uno", "", "Dir", "", "XII", 5, 72, 3, "No"],
+    ]
+    plan = plan_workers(read_workers(book(tmp_path, workers=rows)), areas, existing)
+    assert [w.national_id for w in plan.new] == ["222"] and plan.unchanged == 1
+
+
+def test_clearing_keeps_the_parameters(tmp_path):
+    with ProjectStore(tmp_path / "a.fsal") as a:
+        ctl = _fill(Controller(a))
+        assert ctl.clear_workers() == 2 and ctl.project.workers == [] and len(ctl.project.areas) == 2
+        ctl = _fill(Controller(a))
+        counts = ctl.clear_structure()
+        project = ctl.project
+        assert counts == (2, 4, 4)  # the second fill added a second set of areas and positions
+        assert project.areas == [] and project.positions == [] and project.workers == []
+        assert project.settings.total_amount == D("1000.00")

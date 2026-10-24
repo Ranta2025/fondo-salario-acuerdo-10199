@@ -391,6 +391,7 @@ class StructureTab(ttk.Frame):
                 ("Eliminar", self.delete),
                 ("Importar Excel/CSV…", self.import_excel),
                 ("Guardar plantilla", self.app.save_template),
+                ("Vaciar todo", self.clear_all),
             ],
         )
         columns = [
@@ -575,6 +576,22 @@ class StructureTab(ttk.Frame):
             return
         self.app.changed()
 
+    def clear_all(self) -> None:
+        ctl = self.app.ctl
+        project = ctl.project
+        if not (project.areas or project.positions or project.workers):
+            messagebox.showinfo("Vaciar", "No hay áreas, cargos ni trabajadores que borrar.", parent=self)
+            return
+        question = (
+            f"Se borrarán TODAS las áreas ({len(project.areas)}), los cargos ({len(project.positions)}) "
+            f"y también los trabajadores ({len(project.workers)}), porque dependen de las áreas.\n\n"
+            "Los parámetros del paso 1 no se tocan. Los cambios no se guardan hasta que pulse «Guardar»: "
+            "si se equivoca, cierre sin guardar.\n\n¿Desea vaciar todo?"
+        )
+        if messagebox.askyesno("Vaciar áreas, cargos y trabajadores", question, default="no", parent=self):
+            ctl.clear_structure()
+            self.app.changed()
+
     def import_excel(self) -> None:
         ctl = self.app.ctl
         import_with_confirmation(
@@ -624,6 +641,7 @@ class WorkersTab(ttk.Frame):
         )
         filters = ttk.Frame(self)
         filters.pack(fill="x", pady=(0, 8))
+        ttk.Button(filters, text="Vaciar trabajadores", command=self.clear_all).pack(side="right")
         ttk.Label(filters, text="Buscar:").pack(side="left")
         self.search = tk.StringVar()
         self.search.trace_add("write", lambda *_: self.refresh())
@@ -815,6 +833,22 @@ class WorkersTab(ttk.Frame):
             self.app.ctl.delete_worker(current.id)
             self.app.changed()
 
+    def clear_all(self) -> None:
+        ctl = self.app.ctl
+        count = len(ctl.project.workers)
+        if not count:
+            messagebox.showinfo("Vaciar", "No hay trabajadores que borrar.", parent=self)
+            return
+        question = (
+            f"Se borrarán TODOS los trabajadores ({count}). "
+            "Las áreas, los cargos y los parámetros no se tocan.\n\n"
+            "Los cambios no se guardan hasta que pulse «Guardar»: si se equivoca, cierre sin guardar.\n\n"
+            "¿Desea vaciar la lista de trabajadores?"
+        )
+        if messagebox.askyesno("Vaciar trabajadores", question, default="no", parent=self):
+            ctl.clear_workers()
+            self.app.changed()
+
     def import_file(self) -> None:
         ctl = self.app.ctl
         import_with_confirmation(
@@ -997,6 +1031,14 @@ class App(tk.Tk):
         file_menu.add_command(label="Guardar una copia…", command=self.save_copy)
         file_menu.add_command(label="Exportar a Excel…", command=self.export)
         file_menu.add_command(label="Guardar plantilla de importación…", command=self.save_template)
+        file_menu.add_separator()
+        file_menu.add_command(
+            label="Vaciar trabajadores…", command=lambda: self.tabs["3. Trabajadores"].clear_all()
+        )
+        file_menu.add_command(
+            label="Vaciar áreas, cargos y trabajadores…",
+            command=lambda: self.tabs["2. Áreas y cargos"].clear_all(),
+        )
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.on_close)
         menu.add_cascade(label="Archivo", menu=file_menu)

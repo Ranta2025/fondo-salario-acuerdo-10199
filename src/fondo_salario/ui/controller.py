@@ -115,6 +115,25 @@ class Controller:
         self._store.delete_worker(worker_id)
         self.refresh()
 
+    def clear_workers(self) -> int:
+        """Delete every worker (areas, positions and parameters stay). Returns how many were deleted."""
+        workers = list(self.project.workers)
+        for worker in workers:
+            self._store.delete_worker(worker.id)
+        self.refresh()
+        return len(workers)
+
+    def clear_structure(self) -> tuple[int, int, int]:
+        """Delete every worker, position and area (the parameters stay): (workers, positions, areas)."""
+        project = self.project
+        workers = self.clear_workers()
+        for position in project.positions:
+            self._store.delete_position(position.id)
+        for area in project.areas:
+            self._store.delete_area(area.id)
+        self.refresh()
+        return workers, len(project.positions), len(project.areas)
+
     # -- imports (fixed structure, add-only) -------------------------------------------------
     def plan_workers_import(self, path: str | Path) -> WorkersPlan:
         """What importing this file would add. Raises ImportFormatError when the structure is wrong."""

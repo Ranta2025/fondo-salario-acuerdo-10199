@@ -155,10 +155,10 @@ def _number(value: object, what: str, low: int, high: int, required: bool = True
             raise ValueError(f"falta {what}")
         return None
     try:
-        number = float(text.replace(",", "."))
-    except ValueError:
+        number = Decimal(text.replace(",", "."))
+    except InvalidOperation:
         raise ValueError(f"{what} debe ser un número entero («{text}»)") from None
-    if number != int(number) or not low <= number <= high:
+    if not number.is_finite() or number != number.to_integral_value() or not low <= number <= high:
         raise ValueError(f"{what} debe ser un entero entre {low} y {high} («{text}»)")
     return int(number)
 
@@ -192,8 +192,8 @@ def _money(value: object) -> Decimal:
         amount = Decimal(text)
     except InvalidOperation:
         raise ValueError(f"el salario debe ser un número («{text}»)") from None
-    if amount < 0:
-        raise ValueError("el salario no puede ser negativo")
+    if not amount.is_finite() or amount < 0:
+        raise ValueError(f"el salario debe ser un número positivo («{text}»)")
     return amount
 
 
@@ -291,9 +291,14 @@ def plan_workers(result: ReadResult, areas: list[Area], workers: list[Worker]) -
     plan = WorkersPlan(skipped=list(result.errors))
     area_keys = {key(a.name) for a in areas}
     ids = {w.national_id.strip() for w in workers if w.national_id.strip()}
-    names = {key(w.full_name) for w in workers}
+    id_by_name = {key(w.full_name): w.national_id.strip() for w in workers}
     for row in result.rows:
-        if (row.national_id and row.national_id in ids) or key(row.name) in names:
+        known_id = id_by_name.get(key(row.name))
+        # the ID identifies a person; the name only decides when one of the two has no ID
+        same_name = known_id is not None and (
+            not known_id or not row.national_id or known_id == row.national_id
+        )
+        if (row.national_id and row.national_id in ids) or same_name:
             plan.unchanged += 1
             continue
         if key(row.area) not in area_keys:
@@ -302,7 +307,7 @@ def plan_workers(result: ReadResult, areas: list[Area], workers: list[Worker]) -
             )
             continue
         plan.new.append(row)
-        names.add(key(row.name))
+        id_by_name[key(row.name)] = row.national_id
         if row.national_id:
             ids.add(row.national_id)
     return plan
@@ -372,10 +377,9 @@ def add_data_sheets(wb, areas: list[Area], positions: list[Position], workers: l
                 YES if w.eligible else NO,
             ]
         )
-    for column in ("B",):  # ID numbers keep their leading zeros
-        for cell in ws[column][1:]:
-            cell.number_format = "@"
     last = max(ws.max_row, 1000)
+    for row in range(2, last + 1):  # ID numbers keep their leading zeros, also for rows typed later
+        ws.cell(row=row, column=2).number_format = "@"
     rules = [
         ("E", DataValidation(type="list", formula1='"' + ",".join(to_roman(n) for n in range(1, 26)) + '"')),
         ("H", DataValidation(type="whole", operator="between", formula1="1", formula2="5")),

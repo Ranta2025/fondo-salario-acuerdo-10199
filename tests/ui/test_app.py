@@ -303,3 +303,30 @@ def test_template_has_the_structure_and_can_be_saved(window, monkeypatch, tmp_pa
         "Carné de identidad",
         "Área",
     ]
+
+
+def test_clear_workers_asks_first_and_keeps_areas(window, monkeypatch):
+    area = window.ctl.project.areas[0]
+    window.ctl.add_worker(Worker(0, "Ana Uno", "", area.id, 12, 5, 72, 3))
+    tab = window.tabs["3. Trabajadores"]
+    monkeypatch.setattr(app_module.messagebox, "askyesno", lambda *a, **k: False)
+    tab.clear_all()
+    assert len(window.ctl.project.workers) == 1  # declined
+    monkeypatch.setattr(app_module.messagebox, "askyesno", lambda *a, **k: True)
+    tab.clear_all()
+    assert window.ctl.project.workers == [] and len(window.ctl.project.areas) == 1
+
+
+def test_clear_everything_removes_areas_positions_and_workers(window, monkeypatch):
+    area = window.ctl.project.areas[0]
+    window.ctl.add_position(Position(0, area.id, "Jefe", 1, 1, 0, D("100"), 1))
+    window.ctl.add_worker(Worker(0, "Ana Uno", "", area.id, 12, 5, 72, 3))
+    asked = []
+    monkeypatch.setattr(app_module.messagebox, "askyesno", lambda t, m, **k: asked.append(m) or True)
+    window.tabs["2. Áreas y cargos"].clear_all()
+    project = window.ctl.project
+    assert project.areas == [] and project.positions == [] and project.workers == []
+    assert "TODAS las áreas" in asked[0] and "trabajadores (1)" in asked[0]
+    monkeypatch.setattr(app_module.messagebox, "showinfo", lambda *a, **k: asked.append("info"))
+    window.tabs["2. Áreas y cargos"].clear_all()  # nothing left: says so instead of asking
+    assert asked[-1] == "info"

@@ -41,6 +41,12 @@ Los pesos (25/40/20/15) y las escalas por defecto siguen el documento «Rafelito
 4. **Resultados**: revisa los montos y las observaciones. Pulsa **Exportar a Excel** para generar el informe
    (montos por área, coeficientes por trabajador, pre-nómina y parámetros usados), listo para imprimir.
 
+### Vaciar los datos
+
+Para empezar de cero con una plantilla nueva: **Vaciar trabajadores** (paso 3) borra solo la lista de trabajadores, y
+**Vaciar todo** (paso 2) borra áreas, cargos y trabajadores. También están en el menú Archivo. Piden confirmación,
+no tocan los parámetros del paso 1 y, como todo cambio, no se guardan hasta que pulses **Guardar**.
+
 ### Importar desde Excel o CSV
 
 La importación usa **una estructura fija**, la misma de las tablas del programa. Pulsa **Guardar plantilla…** (pasos 2
