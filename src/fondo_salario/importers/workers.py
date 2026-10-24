@@ -277,10 +277,77 @@ def read_legacy_workers(path: str | Path) -> WorkerImportResult | None:
         workbook.close()
 
 
+def _find_roster_header(sheet):
+    """(row index, {field: column}) of a «Areas y Cargos | Trabajador | Carnet | Grupo» header, if any."""
+    for index, row in enumerate(sheet.iter_rows(max_row=15, values_only=True)):
+        keys = [_normalize_header(c) if c is not None else "" for c in row]
+        columns: dict[str, int] = {}
+        for col, key in enumerate(keys):
+            if "area" in key and "cargo" in key:
+                columns["position"] = col
+            elif key.startswith("trabajador"):
+                columns["name"] = col
+            elif "carnet" in key or "carne" in key:
+                columns["id"] = col
+            elif key.startswith("grupo"):
+                columns["group"] = col
+        if {"position", "name"} <= columns.keys():
+            return index, columns
+    return None
+
+
+def read_roster_workers(path: str | Path) -> WorkerImportResult | None:
+    """Workers from a staffing roster: area rows only have the first column, position rows also have the
+    salary group, and a position row with a worker name is filled. None when no sheet looks like this."""
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(Path(path), read_only=True, data_only=True)
+    try:
+        for sheet in workbook.worksheets:
+            found = _find_roster_header(sheet)
+            if found is None:
+                continue
+            header, cols = found
+            result = WorkerImportResult(legacy=True)
+            area = ""
+            for line, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+                if line <= header + 1:
+                    continue
+
+                def cell(key: str, row=row, cols=cols) -> object:
+                    col = cols.get(key)
+                    return row[col] if col is not None and col < len(row) else None
+
+                title = _clean_text(cell("position"))
+                if not title:
+                    continue
+                group = parse_roman(_clean_text(cell("group"))) if _clean_text(cell("group")) else None
+                if not _clean_text(cell("group")) and not _clean_text(cell("name")):
+                    area = title  # a row with only the first column starts a new area
+                    continue
+                name = _clean_text(cell("name"))
+                if not name:
+                    continue  # vacant position
+                result.rows.append(
+                    WorkerRow(
+                        full_name=name,
+                        national_id=_normalize_national_id(cell("id")),
+                        area=area,
+                        position=title,
+                        salary_group=group if group and 1 <= group <= 25 else None,
+                    )
+                )
+            return result
+        return None
+    finally:
+        workbook.close()
+
+
 def read_workers_auto(path: str | Path) -> WorkerImportResult:
-    """Legacy per-worker sheet when the workbook has one, otherwise a plain CSV/XLSX table."""
+    """Legacy per-worker sheet or staffing roster when the workbook has one, otherwise a plain table."""
     if Path(path).suffix.lower() in {".xlsx", ".xlsm"}:
-        legacy = read_legacy_workers(path)
-        if legacy is not None:
-            return legacy
+        for reader in (read_legacy_workers, read_roster_workers):
+            found = reader(path)
+            if found is not None:
+                return found
     return read_workers(path)
