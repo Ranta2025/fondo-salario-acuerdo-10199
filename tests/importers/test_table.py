@@ -41,7 +41,7 @@ ANA = ["Ana Uno", 112233445, "Dir", "Técnico", "XII", 5, 72, 3, "Sí"]
 
 def test_reads_a_valid_workers_table(tmp_path):
     (row,) = read_workers(book(tmp_path, workers=[ANA])).rows
-    assert (row.name, row.national_id, row.area, row.position) == ("Ana Uno", "112233445", "Dir", "Técnico")
+    assert (row.name, row.national_id, row.area, row.position) == ("Ana Uno", "00112233445", "Dir", "Técnico")
     assert (row.salary_group, row.seniority_years, row.days_worked, row.contribution, row.eligible) == (
         12,
         5,
@@ -278,7 +278,7 @@ def test_same_name_with_a_different_id_is_another_person(tmp_path):
         ["Ana Uno", "", "Dir", "", "XII", 5, 72, 3, "No"],
     ]
     plan = plan_workers(read_workers(book(tmp_path, workers=rows)), areas, existing)
-    assert [w.national_id for w in plan.new] == ["222"] and plan.unchanged == 1
+    assert [w.national_id for w in plan.new] == ["00000000222"] and plan.unchanged == 1
 
 
 def test_clearing_keeps_the_parameters(tmp_path):
@@ -291,3 +291,51 @@ def test_clearing_keeps_the_parameters(tmp_path):
         assert counts == (2, 4, 4)  # the second fill added a second set of areas and positions
         assert project.areas == [] and project.positions == [] and project.workers == []
         assert project.settings.total_amount == D("1000.00")
+
+
+def test_ids_that_lost_their_leading_zeros_still_match_the_stored_ones(tmp_path):
+    from fondo_salario.domain.models import Area
+
+    areas = [Area(1, "Dir", 1)]
+    existing = [Worker(1, "Ana Uno", "00112233445", 1, 12, 5, 72, 3)]
+    plan = plan_workers(read_workers(book(tmp_path, workers=[ANA])), areas, existing)  # ANA has 112233445
+    assert plan.new == [] and plan.unchanged == 1
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("2,200", "2200"),
+        ("2.200", "2200"),
+        ("2200,50", "2200.50"),
+        ("1 234,56", "1234.56"),
+        ("1.234,56", "1234.56"),
+        ("1,234.56", "1234.56"),
+        ("6060.5", "6060.5"),
+        (6060, "6060"),
+    ],
+)
+def test_money_separators(text, expected):
+    from fondo_salario.importers.table import _money
+
+    assert _money(text) == D(expected)
+
+
+def test_whole_numbers_reject_ambiguous_separators(tmp_path):
+    rows = [
+        ANA,
+        ["Beto", "", "Dir", "", "III", "1,000", 72, 4, "No"],
+        ["Carla", "", "Dir", "", "III", "5.0", 72, 4, "No"],
+    ]
+    result = read_workers(book(tmp_path, workers=rows))
+    assert [r.name for r in result.rows] == ["Ana Uno", "Carla"] and "Fila 3" in result.errors[0]
+
+
+@pytest.mark.parametrize(
+    "text,value",
+    [("XII", 12), ("xxv", 25), ("IX", 9), ("XIIX", None), ("VX", None), ("IIIIII", None), ("", None)],
+)
+def test_roman_numerals_must_be_well_formed(text, value):
+    from fondo_salario.domain.scales import parse_roman
+
+    assert parse_roman(text) == value

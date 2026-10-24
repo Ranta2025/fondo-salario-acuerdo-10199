@@ -51,11 +51,12 @@ _ROMAN_VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
 
 def parse_roman(text: str) -> int | None:
     """Value of a roman numeral, or None when the text is not one."""
+    text = text.strip().upper()
     total, previous = 0, 0
-    for char in reversed(text.strip().upper()):
+    for char in reversed(text):
         value = _ROMAN_VALUES.get(char)
         if value is None:
             return None
         total += -value if value < previous else value
         previous = max(previous, value)
-    return total or None
+    return total if total and to_roman(total) == text else None  # only well-formed numerals count

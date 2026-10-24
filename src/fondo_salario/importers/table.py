@@ -64,6 +64,12 @@ def key(text: object) -> str:
     return re.sub(r"[^a-z0-9]", "", ascii_text.decode().lower())
 
 
+def clean_id(value: object) -> str:
+    """ID number as text; short all-digit numbers lost their leading zeros in Excel (IDs have 11 digits)."""
+    text = clean(value)
+    return text.zfill(11) if text.isdigit() and len(text) < 11 else text
+
+
 def clean(value: object) -> str:
     if isinstance(value, float) and value == int(value):
         value = int(value)
@@ -154,11 +160,10 @@ def _number(value: object, what: str, low: int, high: int, required: bool = True
         if required:
             raise ValueError(f"falta {what}")
         return None
-    try:
-        number = Decimal(text.replace(",", "."))
-    except InvalidOperation:
-        raise ValueError(f"{what} debe ser un número entero («{text}»)") from None
-    if not number.is_finite() or number != number.to_integral_value() or not low <= number <= high:
+    if not re.fullmatch(r"\d+([.,]0{1,2})?", text):
+        raise ValueError(f"{what} debe ser un número entero sin separadores («{text}»)")
+    number = int(re.split(r"[.,]", text)[0])
+    if not low <= number <= high:
         raise ValueError(f"{what} debe ser un entero entre {low} y {high} («{text}»)")
     return int(number)
 
@@ -183,10 +188,17 @@ def _yes_no(value: object) -> bool:
 
 
 def _money(value: object) -> Decimal:
+    """Amount; a lone separator followed by exactly three digits is thousands, otherwise decimals."""
     text = clean(value).replace(" ", "")
     if not text:
         return Decimal(0)
-    if "," in text and "." not in text:
+    if "," in text and "." in text:  # the last one is the decimal separator
+        decimal = "," if text.rfind(",") > text.rfind(".") else "."
+        thousands = "." if decimal == "," else ","
+        text = text.replace(thousands, "").replace(decimal, ".")
+    elif re.fullmatch(r"\d{1,3}([.,]\d{3})+", text):
+        text = re.sub(r"[.,]", "", text)
+    else:
         text = text.replace(",", ".")
     try:
         amount = Decimal(text)
@@ -220,7 +232,7 @@ def read_workers(path: str | Path) -> ReadResult:
                 WorkerRow(
                     line,
                     name,
-                    clean(cell("Carné de identidad")),
+                    clean_id(cell("Carné de identidad")),
                     area,
                     clean(cell("Cargo")),
                     _group(cell("Grupo")),
@@ -290,8 +302,8 @@ class StructurePlan:
 def plan_workers(result: ReadResult, areas: list[Area], workers: list[Worker]) -> WorkersPlan:
     plan = WorkersPlan(skipped=list(result.errors))
     area_keys = {key(a.name) for a in areas}
-    ids = {w.national_id.strip() for w in workers if w.national_id.strip()}
-    id_by_name = {key(w.full_name): w.national_id.strip() for w in workers}
+    ids = {clean_id(w.national_id) for w in workers if w.national_id.strip()}
+    id_by_name = {key(w.full_name): clean_id(w.national_id) for w in workers}
     for row in result.rows:
         known_id = id_by_name.get(key(row.name))
         # the ID identifies a person; the name only decides when one of the two has no ID
