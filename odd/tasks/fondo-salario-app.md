@@ -47,7 +47,7 @@ import buttons, fuzzy area matching, honest report of what was read/ignored. Fol
 - [x] T19 Roster reader (workers) + create missing areas for any file + honest "nothing new" message — 171 tests
 - [x] T20 Smart header detection (any sheet/row, flexible names, optional area, notes), roster structure (areas + positions), fuzzy area matching, report of used columns; tests; real-file check — 176 tests; real roster: 86 workers/22 areas/70 positions read, 17 of 21 areas matched to existing ones
 - [x] T20b Review advisories fixed (name-of-area columns, roster footers/vacants, strict structure matching), plain areas table on its own sheet/CSV, wrong-file hints — 182 tests
-- [ ] T21 Merge, verify, release (needs user OK)
+- [x] T21 Merged to main and released as v0.1.5
 
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
