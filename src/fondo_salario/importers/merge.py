@@ -118,14 +118,14 @@ def _area_tokens(name: str) -> frozenset[str]:
     return frozenset(w.rstrip("s") if len(w) > 3 else w for w in words if w not in AREA_STOPWORDS)
 
 
-def find_area(name: str, number: int | None, areas: list[Area]) -> Area | None:
+def find_area(name: str, number: int | None, areas: list[Area], loose: bool = True) -> Area | None:
     """Exact name, one name inside the other, the same distinctive words, then the legacy area number."""
     key = normalize_area(name)
     by_name = {normalize_area(a.name): a for a in areas}
     if key in by_name:
         return by_name[key]
     contained = [a for k, a in by_name.items() if len(min(k, key, key=len)) >= 5 and (k in key or key in k)]
-    if len(contained) == 1:
+    if loose and len(contained) == 1:
         return contained[0]
     tokens = _area_tokens(name)
     if tokens:
@@ -287,7 +287,7 @@ def _record(item: MergeItem, key: str, label: str, current: str, incoming: str, 
 def plan_structure(rows: list[AreaRow], areas: list[Area], positions: list[Position]) -> ImportPlan:
     plan = ImportPlan("structure")
     for area_row in rows:
-        area = find_area(area_row.name, None, areas)
+        area = find_area(area_row.name, None, areas, loose=False)
         if area is None:
             plan.new_areas.append(area_row)
             continue

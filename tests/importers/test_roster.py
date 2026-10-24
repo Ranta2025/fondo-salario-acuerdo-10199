@@ -128,3 +128,85 @@ def test_area_matching_ignores_generic_words_and_finds_unique_partial_matches():
     assert find_area("Grupo de Subsidio y Esfuerzo Propio", None, areas).id == 2
     assert find_area("Departamento de Análisis Económico", None, areas).id == 3
     assert find_area("Grupo Económico", None, areas + [Area(4, "Economico Local", 4)]) is None
+
+
+def test_area_column_named_name_of_area_is_not_the_worker_name():
+    from fondo_salario.importers.workers import header_role
+
+    assert header_role("nombredelarea") == "area"
+    assert header_role("nombredelcargo") == "position"
+    assert header_role("nombreyapellidos") == "full_name"
+
+
+def test_roster_footer_and_vacant_without_group_do_not_become_areas(tmp_path):
+    from fondo_salario.importers.structure import read_structure
+
+    path = _book(
+        tmp_path,
+        {
+            "H": [
+                [None, "Areas y Cargos", "Trabajador", "Carnet", "Grupo"],
+                [None, "Dirección"],
+                [None, "Técnico", "Ana Uno", "1", "XII"],
+                [None, "Técnico"],  # vacant, group left blank
+                [None, "Total de plazas"],
+            ]
+        },
+    )
+    (area,) = read_structure(path)
+    assert area.name == "Dirección" and [(p.name, p.vacant) for p in area.positions] == [("Técnico", 1)]
+
+
+def test_plain_areas_table_on_its_own_sheet_is_read(tmp_path):
+    from fondo_salario.importers.structure import looks_like, read_structure
+
+    path = _book(
+        tmp_path,
+        {
+            "Trabajadores": [["Nombre", "Carné", "Área"], ["Ana Uno", "1", "Dirección"]],
+            "Áreas": [
+                ["Área", "Cargo", "Vacantes", "Salario", "Meses"],
+                ["Dirección", "Director", 1, 6000, 3],
+                [None, "Técnico", 2, 4000, 3],
+                ["Economía", "Jefe", 1, 5000, 3],
+            ],
+        },
+    )
+    areas = read_structure(path)
+    assert [a.name for a in areas] == ["Dirección", "Economía"]
+    tecnico = areas[0].positions[1]
+    assert (tecnico.name, tecnico.vacant, tecnico.salary, tecnico.months_unexecuted) == (
+        "Técnico",
+        2,
+        4000,
+        3,
+    )
+    assert looks_like(path) == "workers"
+
+
+def test_structure_file_is_recognized_as_such_and_csv_works(tmp_path):
+    from fondo_salario.importers.structure import looks_like, read_structure
+
+    path = tmp_path / "areas.csv"
+    path.write_text("Área;Cargo;Vacantes\nDirección;Director;1\n", encoding="utf-8")
+    assert looks_like(path) == "structure"
+    assert read_structure(path)[0].positions[0].vacant == 1
+
+
+def test_plain_xlsx_table_without_roster_still_reads_normally(tmp_path):
+    from fondo_salario.importers.workers import read_workers_auto
+
+    path = _book(
+        tmp_path, {"H": [["Nombre", "Área", "Grupo", "Antigüedad"], ["Ana Uno", "Dirección", "XII", 3]]}
+    )
+    (row,) = read_workers_auto(path).rows
+    assert (row.full_name, row.area, row.salary_group, row.seniority_years) == ("Ana Uno", "Dirección", 12, 3)
+
+
+def test_structure_matching_is_strict_about_partial_names():
+    from fondo_salario.domain.models import Area
+    from fondo_salario.importers.merge import find_area
+
+    areas = [Area(1, "Subdirección", 1)]
+    assert find_area("Dirección", None, areas) is not None  # loose (workers/legacy)
+    assert find_area("Dirección", None, areas, loose=False) is None

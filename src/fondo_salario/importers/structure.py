@@ -15,7 +15,12 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from fondo_salario.importers.workers import _normalize_header, pick_table, roster_entries
+from fondo_salario.importers.workers import (
+    _clean_text,
+    _normalize_header,
+    pick_table,
+    roster_entries,
+)
 
 AREA_HEADER = re.compile(r"^\s*(\d+)\s*[.\-]")
 
@@ -77,6 +82,39 @@ def read_roster_structure(path: str | Path) -> list[AreaRow] | None:
     return list(areas.values())
 
 
+def read_table_structure(path: str | Path) -> list[AreaRow] | None:
+    """Areas and positions from a plain table (Area | Cargo | Vacantes | Salario | Meses), on any sheet."""
+    picked = pick_table(Path(path), "structure")
+    if picked is None:
+        return None
+    _, table, header, columns = picked
+    areas: dict[str, AreaRow] = {}
+    current = ""
+    for raw in table[header + 1 :]:
+
+        def cell(key: str, raw=raw) -> object:
+            col = columns.get(key)
+            return raw[col] if col is not None and col < len(raw) else None
+
+        current = _clean_text(cell("area")) or current  # merged cells leave the area blank below the first
+        if not current:
+            continue
+        row = areas.setdefault(current, AreaRow(len(areas) + 1, current))
+        title = _clean_text(cell("position"))
+        if not title:
+            continue
+        position = next(
+            (p for p in row.positions if _normalize_header(p.name) == _normalize_header(title)), None
+        )
+        if position is None:
+            position = PositionRow(title)
+            row.positions.append(position)
+        position.vacant += int(_number(cell("vacant")))
+        position.salary = _number(cell("salary")) or position.salary
+        position.months_unexecuted = int(_number(cell("months"))) or position.months_unexecuted
+    return list(areas.values())
+
+
 def _has_legacy_sheet(workbook) -> bool:
     return any(
         "monto" in _normalize_header(s.title) and "area" in _normalize_header(s.title)
@@ -85,12 +123,16 @@ def _has_legacy_sheet(workbook) -> bool:
 
 
 def read_structure(path: str | Path, sheet: str | None = None) -> list[AreaRow]:
+    """Legacy "Dist.Monto x area" sheet, else a staffing roster, else a plain areas/positions table."""
+    if sheet is None and Path(path).suffix.lower() == ".csv":
+        return read_table_structure(path) or []
     workbook = load_workbook(Path(path), read_only=True, data_only=True)
     try:
         if sheet is None and not _has_legacy_sheet(workbook):
-            roster = read_roster_structure(path)
-            if roster is not None:
-                return roster
+            for reader in (read_roster_structure, read_table_structure):
+                found = reader(path)
+                if found is not None:
+                    return found
         worksheet = workbook[sheet] if sheet else _pick_sheet(workbook)
         areas: list[AreaRow] = []
         by_number: dict[int, AreaRow] = {}
@@ -118,3 +160,15 @@ def read_structure(path: str | Path, sheet: str | None = None) -> list[AreaRow]:
         return areas
     finally:
         workbook.close()
+
+
+def looks_like(path: str | Path) -> str | None:
+    """ "workers" or "structure" when a table of that kind is found in the file, else None."""
+    try:
+        if pick_table(Path(path), "workers") is not None:
+            return "workers"
+        if pick_table(Path(path), "structure") is not None:
+            return "structure"
+    except Exception:  # unreadable file: the caller reports the real error
+        return None
+    return None

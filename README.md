@@ -48,7 +48,7 @@ Los pesos (25/40/20/15) y las escalas por defecto siguen el documento «Rafelito
    aprovecha las columnas que reconoce, aunque se llamen distinto («Nombre y Apellidos», «C.I.», «Departamento»…).
    Con solo nombre y carné completa los carnés que faltan. También lee una **plantilla de cargos** (columna «Áreas y
    Cargos» con las áreas como filas de título, luego «Trabajador», «Carnet», «Grupo»): trae trabajadores, y desde
-   **Importar áreas y cargos** crea las áreas y los cargos (los cargos sin trabajador cuentan como vacantes). Las
+   **Importar desde Excel** del paso 2 crea las áreas y los cargos (los cargos sin trabajador cuentan como vacantes). Las
    áreas con nombre parecido se emparejan solas; las que no se parecen se crean y se listan en el resumen.
    Al terminar te dice qué columnas leyó y qué filas no pudo usar.
 4. **Resultados**: revisa los montos y las observaciones. Pulsa **Exportar a Excel** para generar el informe

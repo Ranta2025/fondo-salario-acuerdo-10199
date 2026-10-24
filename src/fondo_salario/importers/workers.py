@@ -19,6 +19,18 @@ def header_role(key: str) -> str | None:
     """Field a normalized column title stands for (letters and digits only), or None."""
     if "area" in key and "cargo" in key:
         return "roster"  # one column holding area rows and position rows
+    if "vacante" in key or key.startswith("adistribuir"):
+        return "vacant"
+    if "salario" in key or key.startswith("sueldo"):
+        return "salary"
+    if "meses" in key:
+        return "months"
+    if key in {"area", "departamento", "unidad", "dependencia"} or key.startswith(
+        ("areade", "nombredelarea")
+    ):
+        return "area"
+    if key.startswith(("cargo", "nombredelcargo")) or key in {"plaza", "puesto", "ocupacion", "position"}:
+        return "position"
     if "carne" in key or "identidad" in key or key in {"ci", "id", "nationalid"}:
         return "national_id"
     if (
@@ -28,10 +40,6 @@ def header_role(key: str) -> str | None:
         or key in {"name", "fullname"}
     ):
         return "full_name"
-    if key.startswith("cargo") or key in {"plaza", "puesto", "ocupacion", "position"}:
-        return "position"
-    if key in {"area", "departamento", "unidad", "dependencia"} or key.startswith("areade"):
-        return "area"
     if key.startswith("grupo") or "escala" in key or key == "salarygroup":
         return "salary_group"
     if "antigu" in key or key in {"anos", "anios", "seniority", "seniorityyears"}:
@@ -84,15 +92,23 @@ def _map_headers(headers: list[object]) -> dict[str, int]:
     return mapping
 
 
-def find_header(table: list[list[object]]) -> tuple[int, dict[str, int]] | None:
-    """The row (within the first rows) whose titles match the most known columns, if it matches enough."""
+WORKER_KEYS = {"full_name", "national_id", "roster"}
+STRUCTURE_KEYS = {"area", "position"}
+
+
+def find_header(table: list[list[object]], kind: str = "workers") -> tuple[int, dict[str, int]] | None:
+    """The row (within the first rows) whose titles match the most known columns, if it matches enough.
+
+    kind "workers" needs a name, an ID or a roster column; "structure" needs an area and a position column.
+    """
     best: tuple[int, int, dict[str, int]] | None = None
     for index, row in enumerate(table[:HEADER_SCAN_ROWS]):
         mapping = _map_headers(row)
-        identifies = mapping.keys() & {"full_name", "national_id", "roster"}
-        if not identifies or len(mapping) < MIN_HEADER_SCORE:
-            continue
-        if best is None or len(mapping) > best[0]:
+        if kind == "structure":
+            ok = STRUCTURE_KEYS <= mapping.keys()
+        else:
+            ok = bool(mapping.keys() & WORKER_KEYS) and len(mapping) >= MIN_HEADER_SCORE
+        if ok and (best is None or len(mapping) > best[0]):
             best = (len(mapping), index, mapping)
     return None if best is None else (best[1], best[2])
 
@@ -197,11 +213,13 @@ def read_tables(path: Path) -> list[tuple[str, list[list[object]]]]:
     return [("", [list(row) for row in csv.reader(io.StringIO(text, newline=""), dialect)])]
 
 
-def pick_table(path: Path) -> tuple[str, list[list[object]], int, dict[str, int]] | None:
-    """The sheet (and header row) that looks most like a table of workers or a staffing roster."""
+def pick_table(
+    path: Path, kind: str = "workers"
+) -> tuple[str, list[list[object]], int, dict[str, int]] | None:
+    """The sheet (and header row) that looks most like a table of workers (or of areas and positions)."""
     best = None
     for name, table in read_tables(path):
-        found = find_header(table)
+        found = find_header(table, kind)
         if found is not None and (best is None or len(found[1]) > len(best[3])):
             best = (name, table, found[0], found[1])
     return best
@@ -264,6 +282,7 @@ def roster_entries(table: list[list[object]], header: int, columns: dict[str, in
     position, filled when it has a worker name and vacant otherwise.
     """
     area = ""
+    positions_seen: set[str] = set()
     for line, raw in enumerate(table[header + 1 :], start=header + 2):
 
         def cell(key: str, raw=raw) -> str:
@@ -273,10 +292,20 @@ def roster_entries(table: list[list[object]], header: int, columns: dict[str, in
         title, name, group = cell("roster"), cell("full_name"), cell("salary_group")
         if not title:
             continue
+        key = _normalize_header(title)
+        if (
+            not name
+            and not group
+            and (key in positions_seen or key.startswith(("total", "suma", "nota", "observ")))
+        ):
+            if key in positions_seen:
+                yield line, area, title, "", "", ""  # a vacant position whose group was left blank
+            continue  # footer lines are not areas
         if not name and not group:
             area = title
             yield line, area, None, "", "", ""
             continue
+        positions_seen.add(key)
         col_id = columns.get("national_id")
         national_id = _normalize_national_id(raw[col_id]) if col_id is not None and col_id < len(raw) else ""
         yield line, area, title, name, national_id, group

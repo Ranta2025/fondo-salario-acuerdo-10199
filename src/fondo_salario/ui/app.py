@@ -12,7 +12,7 @@ from tkinter import font as tkfont
 from fondo_salario.domain.models import Position, Settings, Worker
 from fondo_salario.export.excel_report import to_roman
 from fondo_salario.importers.merge import ImportPlan, resolve
-from fondo_salario.importers.structure import read_structure
+from fondo_salario.importers.structure import looks_like, read_structure
 from fondo_salario.importers.workers import parse_roman, read_workers_auto
 from fondo_salario.messages import describe
 from fondo_salario.persistence.sqlite_repo import AreaInUseError, ProjectStore
@@ -567,7 +567,7 @@ class StructureTab(ttk.Frame):
         path = filedialog.askopenfilename(
             parent=self,
             title="Excel con la relación de áreas y cargos",
-            filetypes=[("Excel", "*.xlsx")],
+            filetypes=[("Excel o CSV", "*.xlsx *.csv"), ("Todos", "*.*")],
         )
         if not path:
             return
@@ -578,9 +578,10 @@ class StructureTab(ttk.Frame):
             messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
             return
         if not areas:
-            messagebox.showinfo(
-                "Importar", "No se reconoció ninguna área ni cargo en el archivo.", parent=self
-            )
+            text = "No se reconoció ninguna área ni cargo en el archivo."
+            if looks_like(path) == "workers":
+                text += "\n\nParece un archivo de trabajadores: use «Importar desde Excel/CSV» en el paso 3."
+            messagebox.showinfo("Importar", text, parent=self)
             return
         if not (plan.new_count or plan.fill_count or plan.conflicts):
             messagebox.showinfo("Importar", nothing_new_text(plan, []), parent=self)
@@ -834,6 +835,14 @@ class WorkersTab(ttk.Frame):
             read = read_workers_auto(path)
         except Exception as error:  # unreadable file
             messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
+            return
+        if not read.rows and looks_like(path) == "structure":
+            messagebox.showinfo(
+                "Importar",
+                "Parece un archivo de áreas y cargos, no de trabajadores: use «Importar desde Excel» "
+                "en el paso 2.",
+                parent=self,
+            )
             return
         plan = self.app.ctl.plan_workers_import(read.rows, create_missing_areas=True, allow_undefined=True)
         errors = [f"Fila {e.line}: {e.message}" for e in read.errors]
@@ -1173,7 +1182,7 @@ class App(tk.Tk):
             title="Guardar informe de Excel",
             defaultextension=".xlsx",
             initialfile="fondo-de-salario.xlsx",
-            filetypes=[("Excel", "*.xlsx")],
+            filetypes=[("Excel o CSV", "*.xlsx *.csv"), ("Todos", "*.*")],
         )
         if not path:
             return
