@@ -59,7 +59,7 @@ Branch `feat/strict-import`.
 - [x] T23 Controller + UI: import buttons, template buttons, summary confirm; remove old importers/dialogs; tests
 - [x] T24 Excel report: «Trabajadores» and «Áreas y cargos» sheets in import structure; round-trip test; README/SPEC
 - [x] T24b «Vaciar trabajadores» / «Vaciar todo» (confirm, keeps parameters) + review advisories (zeros in template IDs, robust numbers, same name different ID) — 144 tests
-- [ ] T25 (verified: 165 tests, ruff, e2e script in clean project, selftest; release pending OK) Verify (pytest, ruff, real flow incl. export->import in a clean project), merge + release (needs user OK)
+- [x] T25 (verified: 165 tests, ruff, e2e script in clean project, selftest; released as v0.2.0) Verify (pytest, ruff, real flow incl. export->import in a clean project), merge + release (needs user OK)
 
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
