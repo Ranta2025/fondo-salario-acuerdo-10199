@@ -265,3 +265,18 @@ def test_structure_merge_keeps_the_stored_value_unless_accepted(ctl):
     resolve(plan, "accept_all")
     ctl.apply_import(plan)
     assert ctl.project.positions[0].salary == D("6060")
+
+
+def test_workers_file_on_an_empty_project_creates_the_areas(ctl):
+    plan = ctl.plan_workers_import([row(name="Ana Uno", area="Dirección")], create_missing_areas=True)
+    assert plan.new_count == 1 and plan.areas_to_create == ["Dirección"]
+    ctl.apply_import(plan)
+    assert [a.name for a in ctl.project.areas] == ["Dirección"] and len(ctl.project.workers) == 1
+
+
+def test_nothing_new_text_does_not_claim_everything_is_registered_when_rows_were_skipped(ctl):
+    from fondo_salario.ui.app import nothing_new_text
+
+    plan = ctl.plan_workers_import([row(area="Zzz")])
+    text = nothing_new_text(plan, [])
+    assert "No hay nada nuevo" not in text and "ninguna fila" in text

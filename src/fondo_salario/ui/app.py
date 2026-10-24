@@ -168,8 +168,11 @@ def import_report(summary: ImportSummary, errors: list[str], workers: bool) -> s
 
 
 def nothing_new_text(plan: ImportPlan, errors: list[str]) -> str:
-    text = "No hay nada nuevo: todos los datos del archivo ya estaban registrados y completos."
     problems = errors + plan.skipped
+    if plan.unchanged or not problems:
+        text = "No hay nada nuevo: todos los datos del archivo ya estaban registrados y completos."
+    else:
+        text = "No se pudo importar ninguna fila del archivo."
     if problems:
         text += f"\n\nNo se pueden importar {len(problems)} filas:\n" + "\n".join(problems[:15])
     return text
@@ -823,7 +826,7 @@ class WorkersTab(ttk.Frame):
             messagebox.showerror("Importar", f"No se pudo leer el archivo:\n{error}", parent=self)
             return
         plan = self.app.ctl.plan_workers_import(
-            read.rows, create_missing_areas=read.legacy, allow_undefined=read.legacy
+            read.rows, create_missing_areas=True, allow_undefined=read.legacy
         )
         errors = [f"Fila {e.line}: {e.message}" for e in read.errors]
         if not (plan.new_count or plan.fill_count or plan.conflicts):
