@@ -38,7 +38,7 @@ Nothing is deleted. Applies to Excel and CSV imports (workers and areas/position
 - [x] T15 Pure merge planner (`importers/merge.py`): match, fills, conflicts, resolve(mode, ask) + tests — 22 planner tests
 - [x] T16 Controller: plan_*/apply_import (import_workers/import_structure become thin wrappers) + tests — 160 tests
 - [x] T17 Dialogs: summary + one-by-one conflict dialog with «accept all the rest»; wire both import buttons; window tests
-- [ ] T18 Docs done; full verification passed locally (168 tests); merge + release pending user OK
+- [x] T18 Docs + full verification (168 tests); merged to main and released as v0.1.4
 
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
