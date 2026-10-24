@@ -189,7 +189,15 @@ def import_with_confirmation(parent, app: App, title: str, plan_function, descri
     question += problems_text(plan.skipped) + "\n\n¿Continuar?"
     if not messagebox.askokcancel("Importar", question, parent=parent):
         return False
-    messagebox.showinfo("Importar", import_result_text(apply(plan)), parent=parent)
+    try:
+        summary = apply(plan)
+    except Exception as error:  # a failed write: show what is stored now instead of stale data
+        app.changed()
+        messagebox.showerror(
+            "Importar", f"La importación se interrumpió y quedó incompleta:\n{error}", parent=parent
+        )
+        return False
+    messagebox.showinfo("Importar", import_result_text(summary), parent=parent)
     app.changed()
     return True
 

@@ -330,3 +330,24 @@ def test_clear_everything_removes_areas_positions_and_workers(window, monkeypatc
     monkeypatch.setattr(app_module.messagebox, "showinfo", lambda *a, **k: asked.append("info"))
     window.tabs["2. Áreas y cargos"].clear_all()  # nothing left: says so instead of asking
     assert asked[-1] == "info"
+
+
+def test_structure_file_without_the_titles_is_refused(window, monkeypatch, tmp_path):
+    path = tmp_path / "areas.csv"
+    path.write_text("area;puesto\nDir;Jefe\n", encoding="utf-8")
+    seen = _patch_dialogs(monkeypatch, path)
+    window.tabs["2. Áreas y cargos"].import_excel()
+    assert "Faltan estas columnas" in seen["error"][0] and "Vacantes a distribuir" in seen["error"][0]
+    assert window.ctl.project.positions == []
+
+
+def test_a_failing_write_is_reported_and_the_screen_refreshes(window, monkeypatch, tmp_path):
+    path = _book(tmp_path, workers=[WORKER_ROW])
+    seen = _patch_dialogs(monkeypatch, path)
+
+    def boom(plan):
+        raise RuntimeError("disco lleno")
+
+    monkeypatch.setattr(window.ctl, "apply_workers_import", boom)
+    window.tabs["3. Trabajadores"].import_file()
+    assert "interrumpió" in seen["error"][0] and "disco lleno" in seen["error"][0]
