@@ -70,7 +70,7 @@ Representante del Grupo de Recursos Humanos, Representante del Grupo Económico)
 - [x] T26 Totals in «Áreas y cargos» (area subtotals + fixed TOTAL row, months excluded) — tests + screenshot
 - [x] T27 Workers grouped by area with the sum of coefficients — tests + screenshot
 - [x] T28 «Diagnóstico (Word)…» (`export/diagnostic.py`, dependency-free .docx; rendered in LibreOffice to check); review advisories fixed (single unexecuted formula, illegal XML characters, error/cancel tests) — 177 tests
-- [ ] T29 Review + merge + release (needs user OK)
+- [x] T29 Review + merge + release v0.2.1
 Assumptions to confirm: the % uses vacant + temporary vacancies over the approved staff; the list of workers shows only
 those who collect more than 0.
 
