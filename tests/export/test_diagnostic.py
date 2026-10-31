@@ -89,3 +89,31 @@ def test_special_characters_are_escaped(tmp_path):
         root = ElementTree.fromstring(package.read("word/document.xml"))
     text = "".join(t.text or "" for t in root.iter(f"{W}t"))
     assert "A&B <x>" in text and 'Ana "Q" & Co' in text
+
+
+def test_illegal_control_characters_do_not_break_the_document(tmp_path):
+    areas = [Area(1, "Dir\x00ección", 1)]
+    positions = [Position(1, 1, "Jefe\x0b", 1, 1, 0, D("100"), 1)]
+    workers = [Worker(1, "Ana\x01 Uno", "", 1, 12, 5, 72, 4, "Jefe", True)]
+    settings = Settings(total_amount=D("100.00"), months_paid=1)
+    d = build_diagnostic(
+        settings.total_amount, calculate(settings, areas, positions, workers), date(2026, 1, 1)
+    )
+    path = tmp_path / "d.docx"
+    write_diagnostic(path, d)
+    with zipfile.ZipFile(path) as package:
+        root = ElementTree.fromstring(package.read("word/document.xml"))  # parses: no illegal characters left
+    assert "Ana Uno" in "".join(t.text or "" for t in root.iter(f"{W}t"))
+
+
+def test_a_project_without_vacancies_says_so(tmp_path):
+    areas = [Area(1, "Dirección", 1)]
+    settings = Settings(total_amount=D("100.00"), months_paid=1)
+    d = build_diagnostic(settings.total_amount, calculate(settings, areas, [], []), date(2026, 1, 1))
+    path = tmp_path / "d.docx"
+    write_diagnostic(path, d)
+    with zipfile.ZipFile(path) as package:
+        text = "".join(
+            t.text or "" for t in ElementTree.fromstring(package.read("word/document.xml")).iter(f"{W}t")
+        )
+    assert "No hay vacantes registradas." in text

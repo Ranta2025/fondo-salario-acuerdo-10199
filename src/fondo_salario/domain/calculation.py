@@ -133,7 +133,7 @@ def calculate(
                     position.name,
                 )
             )
-        unexecuted = Decimal(vacancies) * position.salary * position.months_unexecuted
+        unexecuted = position.unexecuted
         area_positions[position.area_id].append(PositionResult(position, vacancies, unexecuted))
     area_unexecuted = [sum((p.unexecuted for p in area_positions[a.id]), Decimal(0)) for a in areas]
     total_unexecuted = sum(area_unexecuted, Decimal(0))

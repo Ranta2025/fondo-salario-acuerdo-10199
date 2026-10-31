@@ -426,3 +426,22 @@ def test_diagnostic_is_saved_as_a_word_file(window, monkeypatch, tmp_path):
     with zipfile.ZipFile(out) as package:
         assert b"Ana Uno" in package.read("word/document.xml")
     assert "Diagnóstico guardado" in shown[-1]
+
+
+def test_diagnostic_save_errors_are_reported_and_cancelling_does_nothing(window, monkeypatch, tmp_path):
+    window.ctl.save_settings(Settings(total_amount=D("1000.00"), months_paid=3))
+    area = window.ctl.project.areas[0]
+    window.ctl.add_position(Position(0, area.id, "Jefe", 1, 1, 0, D("1000"), 3))
+    window.ctl.add_worker(Worker(0, "Ana Uno", "", area.id, 12, 5, 72, 4))
+    window.changed()
+    shown, errors = [], []
+    monkeypatch.setattr(app_module.messagebox, "showinfo", lambda t, m, **k: shown.append(m))
+    monkeypatch.setattr(app_module.messagebox, "showerror", lambda t, m, **k: errors.append(m))
+    monkeypatch.setattr(app_module.filedialog, "asksaveasfilename", lambda *a, **k: "")
+    window.export_diagnostic()
+    assert shown == [] and errors == []  # cancelled
+    monkeypatch.setattr(
+        app_module.filedialog, "asksaveasfilename", lambda *a, **k: str(tmp_path / "no" / "d.docx")
+    )
+    window.export_diagnostic()
+    assert errors and "No se pudo guardar" in errors[0] and shown == []

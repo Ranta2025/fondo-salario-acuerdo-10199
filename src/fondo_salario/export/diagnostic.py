@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import zipfile
 from dataclasses import dataclass, field
 from datetime import date
@@ -109,10 +110,18 @@ def _money(value: Decimal) -> str:
     return f"{value:,.2f}"
 
 
+_ILLEGAL_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+
+
+def _xml_text(text: str) -> str:
+    """Escaped text without the control characters that XML 1.0 (and so Word) cannot hold."""
+    return escape(_ILLEGAL_XML.sub("", text))
+
+
 def _run(text: str, bold: bool = False, size: int = 22) -> str:
     props = f'<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>{"<w:b/>" if bold else ""}'
     props += f'<w:sz w:val="{size}"/>'
-    return f'<w:r><w:rPr>{props}</w:rPr><w:t xml:space="preserve">{escape(text)}</w:t></w:r>'
+    return f'<w:r><w:rPr>{props}</w:rPr><w:t xml:space="preserve">{_xml_text(text)}</w:t></w:r>'
 
 
 def _para(runs: str, align: str = "left", before: int = 0, after: int = 120, keep_next: bool = False) -> str:

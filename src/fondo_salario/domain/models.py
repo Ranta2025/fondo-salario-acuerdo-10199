@@ -59,6 +59,11 @@ class Position:
             return self.total_vacancies
         return min(self.distribute, self.total_vacancies)
 
+    @property
+    def unexecuted(self) -> Decimal:
+        """Unexecuted salary of the vacancies to distribute: vacancies × salary × months."""
+        return self.to_distribute * self.salary * self.months_unexecuted
+
 
 @dataclass(frozen=True)
 class Worker:

@@ -247,6 +247,11 @@ def make_tree(
     return tree
 
 
+def is_worker_row(iid: str) -> bool:
+    """In the workers list a worker's row id is its numeric id; area headings are «a<id>»."""
+    return iid.isdigit()
+
+
 def totals_values(positions) -> tuple:
     """Values of a subtotal or total row of the areas table; the months are left blank."""
     t = structure_totals(positions)
@@ -469,7 +474,6 @@ class StructureTab(ttk.Frame):
                 open=first_fill or iid in open_areas,
             )
         for p in project.positions:
-            unexecuted = p.to_distribute * p.salary * p.months_unexecuted
             self.tree.insert(
                 f"a{p.area_id}",
                 "end",
@@ -482,7 +486,7 @@ class StructureTab(ttk.Frame):
                     p.to_distribute,
                     money_text(p.salary),
                     p.months_unexecuted,
-                    money_text(unexecuted),
+                    money_text(p.unexecuted),
                 ),
             )
         stripe(self.tree)
@@ -733,7 +737,7 @@ class WorkersTab(ttk.Frame):
         self.count.pack(anchor="w", pady=(6, 0))
 
     def _on_double_click(self, _event) -> None:
-        if any(iid.isdigit() for iid in self.tree.selection()):  # an area row only opens or closes
+        if any(is_worker_row(iid) for iid in self.tree.selection()):  # on an area heading it only opens
             self.edit()
 
     def refresh(self) -> None:
@@ -752,13 +756,17 @@ class WorkersTab(ttk.Frame):
         open_areas = {iid for iid in self.tree.get_children() if self.tree.item(iid, "open")}
         self.tree.delete(*self.tree.get_children())
         shown = 0
-        for area in project.areas:
-            if wanted != self.ALL and area.name != wanted:
+        groups = [(f"a{a.id}", a.name, a.id) for a in project.areas]
+        if any(w.area_id not in names for w in project.workers):
+            groups.append(("none", "(sin área)", None))  # never hide a worker whose area is missing
+        for iid, area_name, area_id in groups:
+            if wanted != self.ALL and area_name != wanted:
                 continue
+            belongs = [
+                w for w in project.workers if (w.area_id == area_id if area_id else w.area_id not in names)
+            ]
             members = []
-            for w in project.workers:
-                if w.area_id != area.id:
-                    continue
+            for w in belongs:
                 if text and text not in w.full_name.lower() and text not in w.national_id:
                     continue
                 if (right == "Con derecho" and not w.eligible) or (right == "Sin derecho" and w.eligible):
@@ -766,14 +774,12 @@ class WorkersTab(ttk.Frame):
                 members.append(w)
             if not members and (text or right != "Todos"):
                 continue  # a filter is active: hide areas with nothing to show
-            iid = f"a{area.id}"
-            total = len([w for w in project.workers if w.area_id == area.id])
             self.tree.insert(
                 "",
                 "end",
                 iid=iid,
-                text=f"{area.name}  ({total})",
-                values=("",) * 7 + (f"{sums.get(area.id, 0):.2f}",),
+                text=f"{area_name}  ({len(belongs)})",
+                values=("",) * 7 + (f"{sums.get(area_id, 0):.2f}",),
                 tags=("area",),
                 open=iid in open_areas or bool(text),
             )
@@ -855,7 +861,7 @@ class WorkersTab(ttk.Frame):
             self.app.changed()
 
     def _selected_worker(self) -> Worker | None:
-        ids = [iid for iid in self.tree.selection() if iid.isdigit()]
+        ids = [iid for iid in self.tree.selection() if is_worker_row(iid)]
         if not ids:
             messagebox.showinfo(
                 "Trabajadores", "Primero haga clic en un trabajador de la lista.", parent=self
@@ -885,7 +891,7 @@ class WorkersTab(ttk.Frame):
             self.app.changed()
 
     def _selected_ids(self) -> list[int]:
-        ids = [int(iid) for iid in self.tree.selection() if iid.isdigit()]
+        ids = [int(iid) for iid in self.tree.selection() if is_worker_row(iid)]
         if not ids:
             messagebox.showinfo(
                 "Trabajadores", "Primero haga clic en uno o varios trabajadores de la lista.", parent=self

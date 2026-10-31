@@ -43,7 +43,7 @@ def structure_totals(positions: list[Position]) -> StructureTotals:
         temp_vacant=sum(p.temp_vacant for p in positions),
         to_distribute=sum(p.to_distribute for p in positions),
         salary=sum((p.salary for p in positions), Decimal(0)),
-        unexecuted=sum((p.to_distribute * p.salary * p.months_unexecuted for p in positions), Decimal(0)),
+        unexecuted=sum((p.unexecuted for p in positions), Decimal(0)),
     )
 
 
