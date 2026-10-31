@@ -756,15 +756,11 @@ class WorkersTab(ttk.Frame):
         open_areas = {iid for iid in self.tree.get_children() if self.tree.item(iid, "open")}
         self.tree.delete(*self.tree.get_children())
         shown = 0
-        groups = [(f"a{a.id}", a.name, a.id) for a in project.areas]
-        if any(w.area_id not in names for w in project.workers):
-            groups.append(("none", "(sin área)", None))  # never hide a worker whose area is missing
-        for iid, area_name, area_id in groups:
+        for area in project.areas:  # every worker has an area: the database enforces the foreign key
+            iid, area_name, area_id = f"a{area.id}", area.name, area.id
             if wanted != self.ALL and area_name != wanted:
                 continue
-            belongs = [
-                w for w in project.workers if (w.area_id == area_id if area_id else w.area_id not in names)
-            ]
+            belongs = [w for w in project.workers if w.area_id == area_id]
             members = []
             for w in belongs:
                 if text and text not in w.full_name.lower() and text not in w.national_id:
