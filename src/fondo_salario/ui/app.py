@@ -15,7 +15,14 @@ from fondo_salario.export.excel_report import to_roman
 from fondo_salario.importers.table import ImportFormatError, StructurePlan, WorkersPlan
 from fondo_salario.messages import describe
 from fondo_salario.persistence.sqlite_repo import AreaInUseError, ProjectStore
-from fondo_salario.ui.controller import Controller, ImportSummary, parse_money, resolve_distribute
+from fondo_salario.ui.controller import (
+    Controller,
+    ImportSummary,
+    coefficient_sums,
+    parse_money,
+    resolve_distribute,
+    structure_totals,
+)
 from fondo_salario.ui.forms import Field, ask_form
 
 APP_TITLE = "Fondo de salario — Acuerdo 10199/2025"
@@ -216,21 +223,42 @@ def button_bar(parent, buttons: list[tuple[str, object]]) -> ttk.Frame:
     return bar
 
 
-def make_tree(parent, columns: list[tuple[str, str, int]], expand: bool = True, **kwargs) -> ttk.Treeview:
+def make_tree(
+    parent, columns: list[tuple[str, str, int]], expand: bool = True, scroll: bool = True, **kwargs
+) -> ttk.Treeview:
     frame = ttk.Frame(parent)
     frame.pack(fill="both", expand=expand, pady=(0, 0 if expand else 8))
     tree = ttk.Treeview(frame, columns=[c[0] for c in columns], **kwargs)
     for key, title, width in columns:
         tree.heading(key, text=title)
         tree.column(key, width=width, anchor="w" if key in ("name", "area", "position") else "e")
-    scroll = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
-    tree.configure(yscrollcommand=scroll.set)
+    bar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+    if scroll:
+        tree.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+    else:  # same width as the scrollbar so that its columns line up with the table above
+        tk.Frame(frame, width=bar.winfo_reqwidth()).pack(side="right", fill="y")
     tree.pack(side="left", fill="both", expand=True)
-    scroll.pack(side="right", fill="y")
     tree.tag_configure("odd", background=COLOR_STRIPE)
     tree.tag_configure("area", background=COLOR_AREA)
+    family = tkfont.nametofont("TkDefaultFont").actual("family")
+    tree.tag_configure("total", background=COLOR_AREA, font=(family, FONT_SIZE, "bold"))
     tree.tag_configure("zero", foreground="#777777")
     return tree
+
+
+def totals_values(positions) -> tuple:
+    """Values of a subtotal or total row of the areas table; the months are left blank."""
+    t = structure_totals(positions)
+    return (
+        t.approved,
+        t.vacant,
+        t.temp_vacant,
+        t.to_distribute,
+        money_text(t.salary),
+        "",
+        money_text(t.unexecuted),
+    )
 
 
 def stripe(tree: ttk.Treeview) -> None:
@@ -241,7 +269,7 @@ def stripe(tree: ttk.Treeview) -> None:
         nonlocal visible
         for iid in tree.get_children(parent):
             tags = [t for t in tree.item(iid, "tags") if t != "odd"]
-            if "area" not in tags:
+            if "area" not in tags and "total" not in tags:
                 visible += 1
                 if visible % 2 == 0:
                     tags.append("odd")
@@ -411,7 +439,14 @@ class StructureTab(ttk.Frame):
             ("months", "Meses", 90),
             ("unexecuted", "Monto inejecutado", 180),
         ]
-        self.tree = make_tree(self, columns, show="tree headings")
+        # the totals row is packed first, at the bottom, so that it stays visible when the table scrolls
+        self.totals = make_tree(
+            self, columns, expand=False, scroll=False, show="tree", height=1, style="Compact.Treeview"
+        )
+        self.totals.master.pack_forget()
+        self.totals.master.pack(side="bottom", fill="x")
+        self.totals.column("#0", width=300)
+        self.tree = make_tree(self, columns, expand=True, show="tree headings")
         self.tree.heading("#0", text="Área / cargo")
         self.tree.column("#0", width=300)
         self.tree.bind("<Double-1>", lambda _e: self.edit_position())
@@ -423,8 +458,15 @@ class StructureTab(ttk.Frame):
         project = self.app.ctl.project
         for area in project.areas:
             iid = f"a{area.id}"
+            members = [p for p in project.positions if p.area_id == area.id]
             self.tree.insert(
-                "", "end", iid=iid, text=area.name, tags=("area",), open=first_fill or iid in open_areas
+                "",
+                "end",
+                iid=iid,
+                text=area.name,
+                values=totals_values(members) if members else (),
+                tags=("area",),
+                open=first_fill or iid in open_areas,
             )
         for p in project.positions:
             unexecuted = p.to_distribute * p.salary * p.months_unexecuted
@@ -444,6 +486,8 @@ class StructureTab(ttk.Frame):
                 ),
             )
         stripe(self.tree)
+        self.totals.delete(*self.totals.get_children())
+        self.totals.insert("", "end", text="TOTAL", values=totals_values(project.positions), tags=("total",))
 
     def _selected(self) -> tuple[str, int] | None:
         selection = self.tree.selection()
@@ -633,7 +677,8 @@ class WorkersTab(ttk.Frame):
         hint(
             self,
             "Agregue a cada trabajador con sus datos. El derecho a cobro es solo para quienes asumen las "
-            "tareas de una plaza vacante: quíteselo a los demás (puede marcar varios a la vez).",
+            "tareas de una plaza vacante: quíteselo a los demás (puede marcar varios a la vez). "
+            "En cada área se ve la suma de los coeficientes.",
         )
         button_bar(
             self,
@@ -671,58 +716,86 @@ class WorkersTab(ttk.Frame):
         right_combo.pack(side="left", padx=6)
         right_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
         columns = [
-            ("name", "Nombre y apellidos", 220),
-            ("ci", "Carné de identidad", 170),
-            ("area", "Área", 220),
+            ("ci", "Carné de identidad", 180),
             ("position", "Cargo", 130),
-            ("group", "Grupo", 75),
-            ("years", "Antigüedad", 115),
-            ("days", "Días", 60),
-            ("contribution", "Contrib.", 90),
-            ("eligible", "Derecho a cobro", 160),
+            ("group", "Grupo", 70),
+            ("years", "Antigüedad", 110),
+            ("days", "Días", 55),
+            ("contribution", "Contrib.", 85),
+            ("eligible", "Derecho a cobro", 150),
+            ("coef", "Coeficiente", 115),
         ]
-        self.tree = make_tree(self, columns, show="headings")
-        self.tree.bind("<Double-1>", lambda _e: self.edit())
+        self.tree = make_tree(self, columns, show="tree headings")
+        self.tree.heading("#0", text="Área / trabajador")
+        self.tree.column("#0", width=330)
+        self.tree.bind("<Double-1>", self._on_double_click)
         self.count = ttk.Label(self, text="", style="Hint.TLabel")
         self.count.pack(anchor="w", pady=(6, 0))
 
+    def _on_double_click(self, _event) -> None:
+        if any(iid.isdigit() for iid in self.tree.selection()):  # an area row only opens or closes
+            self.edit()
+
     def refresh(self) -> None:
-        project = self.app.ctl.project
+        ctl = self.app.ctl
+        project = ctl.project
         names = {a.id: a.name for a in project.areas}
         self.combo.configure(values=[self.ALL, *names.values()])
         if self.area_filter.get() not in (self.ALL, *names.values()):
             self.area_filter.set(self.ALL)
         text = self.search.get().strip().lower()
         wanted = self.area_filter.get()
+        result = ctl.calculation()
+        coefficients = {r.worker.id: r.coefficient for r in result.workers}
+        sums = coefficient_sums(result)
+        right = self.right_filter.get()
+        open_areas = {iid for iid in self.tree.get_children() if self.tree.item(iid, "open")}
         self.tree.delete(*self.tree.get_children())
         shown = 0
-        for w in project.workers:
-            area = names.get(w.area_id, "")
-            if wanted != self.ALL and area != wanted:
+        for area in project.areas:
+            if wanted != self.ALL and area.name != wanted:
                 continue
-            if text and text not in w.full_name.lower() and text not in w.national_id:
-                continue
-            right = self.right_filter.get()
-            if (right == "Con derecho" and not w.eligible) or (right == "Sin derecho" and w.eligible):
-                continue
-            shown += 1
+            members = []
+            for w in project.workers:
+                if w.area_id != area.id:
+                    continue
+                if text and text not in w.full_name.lower() and text not in w.national_id:
+                    continue
+                if (right == "Con derecho" and not w.eligible) or (right == "Sin derecho" and w.eligible):
+                    continue
+                members.append(w)
+            if not members and (text or right != "Todos"):
+                continue  # a filter is active: hide areas with nothing to show
+            iid = f"a{area.id}"
+            total = len([w for w in project.workers if w.area_id == area.id])
             self.tree.insert(
                 "",
                 "end",
-                iid=str(w.id),
-                values=(
-                    w.full_name,
-                    w.national_id,
-                    area,
-                    w.position_name,
-                    group_text(w.salary_group),
-                    w.seniority_years,
-                    w.days_worked,
-                    w.contribution,
-                    "Sí" if w.eligible else "No",
-                ),
-                tags=() if w.eligible else ("zero",),
+                iid=iid,
+                text=f"{area.name}  ({total})",
+                values=("",) * 7 + (f"{sums.get(area.id, 0):.2f}",),
+                tags=("area",),
+                open=iid in open_areas or bool(text),
             )
+            for w in members:
+                shown += 1
+                self.tree.insert(
+                    iid,
+                    "end",
+                    iid=str(w.id),
+                    text=w.full_name,
+                    values=(
+                        w.national_id,
+                        w.position_name,
+                        group_text(w.salary_group),
+                        w.seniority_years,
+                        w.days_worked,
+                        w.contribution,
+                        "Sí" if w.eligible else "No",
+                        f"{coefficients.get(w.id, 0):.2f}",
+                    ),
+                    tags=() if w.eligible else ("zero",),
+                )
         stripe(self.tree)
         self.count.configure(text=f"Mostrando {shown} de {len(project.workers)} trabajadores")
 
@@ -782,13 +855,13 @@ class WorkersTab(ttk.Frame):
             self.app.changed()
 
     def _selected_worker(self) -> Worker | None:
-        selection = self.tree.selection()
-        if not selection:
+        ids = [iid for iid in self.tree.selection() if iid.isdigit()]
+        if not ids:
             messagebox.showinfo(
                 "Trabajadores", "Primero haga clic en un trabajador de la lista.", parent=self
             )
             return None
-        return self.app.ctl.worker(int(selection[0]))
+        return self.app.ctl.worker(int(ids[0]))
 
     def edit(self) -> None:
         current = self._selected_worker()
@@ -812,7 +885,7 @@ class WorkersTab(ttk.Frame):
             self.app.changed()
 
     def _selected_ids(self) -> list[int]:
-        ids = [int(iid) for iid in self.tree.selection()]
+        ids = [int(iid) for iid in self.tree.selection() if iid.isdigit()]
         if not ids:
             messagebox.showinfo(
                 "Trabajadores", "Primero haga clic en uno o varios trabajadores de la lista.", parent=self
@@ -883,6 +956,9 @@ class ResultsTab(ttk.Frame):
         bar.pack(fill="x", pady=(0, 8))
         ttk.Button(bar, text="Exportar a Excel…", style="Primary.TButton", command=app.export).pack(
             side="left"
+        )
+        ttk.Button(bar, text="Diagnóstico (Word)…", command=app.export_diagnostic).pack(
+            side="left", padx=(8, 0)
         )
         self.summary = ttk.Label(bar, text="", style="Big.TLabel")
         self.summary.pack(side="left", padx=20)
@@ -1038,6 +1114,7 @@ class App(tk.Tk):
         file_menu.add_command(label="Guardar        Ctrl+S", command=self.save)
         file_menu.add_command(label="Guardar una copia…", command=self.save_copy)
         file_menu.add_command(label="Exportar a Excel…", command=self.export)
+        file_menu.add_command(label="Diagnóstico (Word)…", command=self.export_diagnostic)
         file_menu.add_command(label="Guardar plantilla de importación…", command=self.save_template)
         file_menu.add_separator()
         file_menu.add_command(label="Vaciar trabajadores…", command=lambda: self.clear("3. Trabajadores"))
@@ -1218,6 +1295,38 @@ class App(tk.Tk):
     def clear(self, tab: str) -> None:
         if self.ctl is not None:
             self.tabs[tab].clear_all()
+
+    def export_diagnostic(self) -> None:
+        if self.ctl is None or not self._apply_pending_parameters():
+            return
+        diagnostic = self.ctl.diagnostic()
+        if diagnostic.total_amount <= 0 or not diagnostic.beneficiaries:
+            messagebox.showinfo(
+                "Diagnóstico",
+                "Todavía no hay a quién pagar: indique el monto real en el paso 1, y en el paso 3 marque "
+                "el derecho a cobro de los trabajadores.",
+                parent=self,
+            )
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Guardar el diagnóstico",
+            defaultextension=".docx",
+            initialfile="diagnostico.docx",
+            filetypes=[("Documento de Word", "*.docx")],
+        )
+        if not path:
+            return
+        try:
+            self.ctl.export_diagnostic(path)
+        except OSError as error:
+            messagebox.showerror(
+                "Diagnóstico",
+                f"No se pudo guardar el archivo. ¿Está abierto en Word?\n{error}",
+                parent=self,
+            )
+            return
+        messagebox.showinfo("Diagnóstico", f"Diagnóstico guardado en:\n{path}", parent=self)
 
     def save_template(self) -> None:
         if self.ctl is None:

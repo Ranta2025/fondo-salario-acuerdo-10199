@@ -61,6 +61,19 @@ Branch `feat/strict-import`.
 - [x] T24b «Vaciar trabajadores» / «Vaciar todo» (confirm, keeps parameters) + review advisories (zeros in template IDs, robust numbers, same name different ID) — 144 tests
 - [x] T25 (verified: 165 tests, ruff, e2e script in clean project, selftest; released as v0.2.0) Verify (pytest, ruff, real flow incl. export->import in a clean project), merge + release (needs user OK)
 
+## Iteration 7 (user's «Rafelito.docx»: new specifications)
+Source (verbatim): «En Areas y Cargas que totalicen todas las columnas excepto los meses» · «En los Trabajadores que se
+visualice la suma de los coeficientes por Areas» · «Que en los resultados me dé el Diagnostico» (Fecha, plantilla
+aprobada, plantilla vacante, % de vacantes sobre las aprobadas, listado de vacantes y temporales, monto real y
+trabajadores beneficiados, listado de trabajadores por áreas, firmas: Jefe de Departamento Administrativo,
+Representante del Grupo de Recursos Humanos, Representante del Grupo Económico). Branch `feat/diagnostico`.
+- [x] T26 Totals in «Áreas y cargos» (area subtotals + fixed TOTAL row, months excluded) — tests + screenshot
+- [x] T27 Workers grouped by area with the sum of coefficients — tests + screenshot
+- [x] T28 «Diagnóstico (Word)…» (`export/diagnostic.py`, dependency-free .docx; rendered in LibreOffice to check) — 174 tests
+- [ ] T29 Review + merge + release (needs user OK)
+Assumptions to confirm: the % uses vacant + temporary vacancies over the approved staff; the list of workers shows only
+those who collect more than 0.
+
 ## Acceptance
 - Sum of area amounts == total_amount; sum of worker amounts == total_amount (exact, cents).
 - Pre-nomina lists every worker, 0.00 for non-paid.

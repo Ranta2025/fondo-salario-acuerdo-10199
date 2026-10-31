@@ -101,3 +101,13 @@ One predefined structure, identical to the tables of the program; the file must 
   row skipped with reason. Existing records are never changed. `Controller.plan_*_import(path)` + `apply_*_import(plan)`.
 - The Excel report ends with the same two sheets (`add_data_sheets`), and `write_template` writes them empty with an
   «Instrucciones» sheet; export -> import round trip is covered by tests.
+
+## «Rafelito» specifications (iteration 7)
+- Areas and positions table: area rows show the subtotal of their positions and a fixed TOTAL row sums every
+  numeric column except the months (`structure_totals`).
+- Workers tab: grouped by area; each area row shows the sum of the individual coefficients (`coefficient_sums`) and each
+  worker its own coefficient.
+- Results: «Diagnóstico (Word)…» (`export/diagnostic.py`, `Controller.export_diagnostic`) writes a `.docx` without extra
+  dependencies: date, standard introduction, approved/vacant/temporary staffing, % that the vacancies (permanent +
+  temporary) represent of the approved staff, vacancy list, real amount and number of beneficiaries (workers who
+  collect more than 0), beneficiaries by area with subtotals, conclusion and three signature lines.

@@ -143,9 +143,14 @@ def _add_workers(window, count=3):
     return window.tabs["3. Trabajadores"]
 
 
+def _worker_rows(tab):
+    """Worker rows of the grouped list (the area rows are only headings with the sum of coefficients)."""
+    return [iid for area in tab.tree.get_children() for iid in tab.tree.get_children(area)]
+
+
 def test_bulk_toggle_of_the_right_to_collect(window):
     tab = _add_workers(window)
-    ids = tab.tree.get_children()
+    ids = _worker_rows(tab)
     tab.tree.selection_set(ids[:2])
     tab.revoke_right()
     assert [w.eligible for w in window.ctl.project.workers] == [False, False, True]
@@ -160,10 +165,10 @@ def test_filter_by_right_to_collect(window):
     window.changed()
     tab.right_filter.set("Con derecho")
     tab.refresh()
-    assert len(tab.tree.get_children()) == 2
+    assert len(_worker_rows(tab)) == 2
     tab.right_filter.set("Sin derecho")
     tab.refresh()
-    assert len(tab.tree.get_children()) == 1
+    assert len(_worker_rows(tab)) == 1
 
 
 def test_contribution_labels_follow_the_regulation():
@@ -351,3 +356,73 @@ def test_a_failing_write_is_reported_and_the_screen_refreshes(window, monkeypatc
     monkeypatch.setattr(window.ctl, "apply_workers_import", boom)
     window.tabs["3. Trabajadores"].import_file()
     assert "interrumpió" in seen["error"][0] and "disco lleno" in seen["error"][0]
+
+
+def test_workers_are_grouped_by_area_with_the_sum_of_their_coefficients(window):
+    from fondo_salario.ui.controller import coefficient_sums
+
+    window.ctl.save_settings(Settings(total_amount=D("1000.00"), months_paid=3))
+    area = window.ctl.project.areas[0]
+    window.ctl.add_position(Position(0, area.id, "Jefe", 2, 2, 0, D("1000"), 3))
+    window.ctl.add_worker(Worker(0, "Ana", "1", area.id, 12, 5, 72, 4))
+    window.ctl.add_worker(Worker(0, "Beto", "2", area.id, 3, 1, 72, 3))
+    window.changed()
+    tab = window.tabs["3. Trabajadores"]
+    (area_row,) = tab.tree.get_children()
+    result = window.ctl.calculation()
+    expected = sum(r.coefficient for r in result.workers)
+    assert tab.tree.item(area_row, "values")[-1] == f"{expected:.2f}" and "(2)" in tab.tree.item(
+        area_row, "text"
+    )
+    assert coefficient_sums(result) == {area.id: expected}
+    child_values = [tab.tree.item(i, "values")[-1] for i in tab.tree.get_children(area_row)]
+    assert sorted(child_values) == sorted(f"{r.coefficient:.2f}" for r in result.workers)
+
+
+def test_selecting_only_an_area_row_does_not_touch_workers(window, monkeypatch):
+    tab = _add_workers(window)
+    monkeypatch.setattr(app_module.messagebox, "showinfo", lambda *a, **k: None)
+    tab.tree.selection_set(tab.tree.get_children()[:1])
+    tab.revoke_right()
+    assert all(w.eligible for w in window.ctl.project.workers)
+
+
+def test_structure_table_shows_area_subtotals_and_a_total_row_without_adding_months(window):
+    area = window.ctl.project.areas[0]
+    other = window.ctl.add_area("Eco")
+    window.ctl.add_position(Position(0, area.id, "Jefe", 2, 1, 1, D("1000"), 3, None))
+    window.ctl.add_position(Position(0, area.id, "Chofer", 1, 1, 0, D("500"), 3, None))
+    window.ctl.add_position(Position(0, other.id, "Contador", 3, 2, 0, D("200"), 3, 1))
+    window.changed()
+    tab = window.tabs["2. Áreas y cargos"]
+    (total_row,) = tab.totals.get_children()
+    total = tab.totals.item(total_row, "values")
+    # approved, vacant, temp, to distribute, salary, months (blank), unexecuted
+    assert tuple(total) == ("6", "4", "1", "4", "1,700.00", "", "8,100.00")
+    assert tuple(tab.tree.item(f"a{area.id}", "values"))[:4] == ("3", "2", "1", "3")
+    assert tab.totals.item(total_row, "text") == "TOTAL"
+
+
+def test_diagnostic_button_refuses_when_there_is_nobody_to_pay(window, monkeypatch):
+    shown = []
+    monkeypatch.setattr(app_module.messagebox, "showinfo", lambda t, m, **k: shown.append(m))
+    window.export_diagnostic()
+    assert shown and "monto real" in shown[0]
+
+
+def test_diagnostic_is_saved_as_a_word_file(window, monkeypatch, tmp_path):
+    window.ctl.save_settings(Settings(total_amount=D("1000.00"), months_paid=3))
+    area = window.ctl.project.areas[0]
+    window.ctl.add_position(Position(0, area.id, "Jefe", 1, 1, 0, D("1000"), 3))
+    window.ctl.add_worker(Worker(0, "Ana Uno", "", area.id, 12, 5, 72, 4))
+    window.changed()
+    out = tmp_path / "diagnostico.docx"
+    monkeypatch.setattr(app_module.filedialog, "asksaveasfilename", lambda *a, **k: str(out))
+    shown = []
+    monkeypatch.setattr(app_module.messagebox, "showinfo", lambda t, m, **k: shown.append(m))
+    window.export_diagnostic()
+    import zipfile
+
+    with zipfile.ZipFile(out) as package:
+        assert b"Ana Uno" in package.read("word/document.xml")
+    assert "Diagnóstico guardado" in shown[-1]

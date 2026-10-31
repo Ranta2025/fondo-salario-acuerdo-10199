@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 from fondo_salario.domain.calculation import CalculationResult, calculate
 from fondo_salario.domain.models import Area, Position, Settings, Worker
+from fondo_salario.export.diagnostic import Diagnostic, build_diagnostic, write_diagnostic
 from fondo_salario.export.excel_report import export_report
 from fondo_salario.importers.table import (
     StructurePlan,
@@ -20,6 +22,37 @@ from fondo_salario.importers.table import (
     write_template,
 )
 from fondo_salario.persistence.sqlite_repo import Project, ProjectStore
+
+
+@dataclass(frozen=True)
+class StructureTotals:
+    """Sums of the numeric columns of the «Áreas y cargos» table (the months are not added up)."""
+
+    approved: int = 0
+    vacant: int = 0
+    temp_vacant: int = 0
+    to_distribute: int = 0
+    salary: Decimal = Decimal(0)
+    unexecuted: Decimal = Decimal(0)
+
+
+def structure_totals(positions: list[Position]) -> StructureTotals:
+    return StructureTotals(
+        approved=sum(p.approved for p in positions),
+        vacant=sum(p.vacant for p in positions),
+        temp_vacant=sum(p.temp_vacant for p in positions),
+        to_distribute=sum(p.to_distribute for p in positions),
+        salary=sum((p.salary for p in positions), Decimal(0)),
+        unexecuted=sum((p.to_distribute * p.salary * p.months_unexecuted for p in positions), Decimal(0)),
+    )
+
+
+def coefficient_sums(result: CalculationResult) -> dict[int, Decimal]:
+    """Sum of the individual coefficients of every worker, by area id."""
+    sums: dict[int, Decimal] = {}
+    for r in result.workers:
+        sums[r.worker.area_id] = sums.get(r.worker.area_id, Decimal(0)) + r.coefficient
+    return sums
 
 
 @dataclass
@@ -198,6 +231,13 @@ class Controller:
         write_template(path)
 
     # -- export -------------------------------------------------------------------------
+    def diagnostic(self, on: date | None = None) -> Diagnostic:
+        """Data of the «Diagnóstico» document for the current project."""
+        return build_diagnostic(self.project.settings.total_amount, self.calculation(), on or date.today())
+
+    def export_diagnostic(self, path: str | Path, on: date | None = None) -> None:
+        write_diagnostic(path, self.diagnostic(on))
+
     def export(self, path: str | Path) -> None:
         export_report(path, self.project.settings, self.calculation())
 
