@@ -55,6 +55,35 @@ def coefficient_sums(result: CalculationResult) -> dict[int, Decimal]:
     return sums
 
 
+def amount_sums(result: CalculationResult) -> dict[int, Decimal]:
+    """Sum of the amounts the workers collect, by area id."""
+    sums: dict[int, Decimal] = {}
+    for r in result.workers:
+        sums[r.worker.area_id] = sums.get(r.worker.area_id, Decimal(0)) + r.amount
+    return sums
+
+
+@dataclass(frozen=True)
+class WorkerTotals:
+    """Totals of the workers table: how many there are, how many may collect and collect, and the sums."""
+
+    workers: int
+    entitled: int
+    paid: int
+    coefficient: Decimal
+    amount: Decimal
+
+
+def worker_totals(result: CalculationResult) -> WorkerTotals:
+    return WorkerTotals(
+        workers=len(result.workers),
+        entitled=sum(1 for r in result.workers if r.worker.eligible),
+        paid=sum(1 for r in result.workers if r.amount > 0),
+        coefficient=sum((r.coefficient for r in result.workers), Decimal(0)),
+        amount=sum((r.amount for r in result.workers), Decimal(0)),
+    )
+
+
 @dataclass
 class ImportSummary:
     """What an import added; existing records are never changed."""

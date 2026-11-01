@@ -18,10 +18,12 @@ from fondo_salario.persistence.sqlite_repo import AreaInUseError, ProjectStore
 from fondo_salario.ui.controller import (
     Controller,
     ImportSummary,
+    amount_sums,
     coefficient_sums,
     parse_money,
     resolve_distribute,
     structure_totals,
+    worker_totals,
 )
 from fondo_salario.ui.forms import Field, ask_form
 
@@ -266,6 +268,11 @@ def totals_values(positions) -> tuple:
     )
 
 
+def share_values(pct, amount) -> tuple:
+    """The share of the total and the amount to pay, the two result columns of the areas table."""
+    return f"{pct:.2f}", money_text(amount)
+
+
 def stripe(tree: ttk.Treeview) -> None:
     """Alternate row shading for readability (area rows keep their own colour)."""
     visible = 0
@@ -436,13 +443,15 @@ class StructureTab(ttk.Frame):
             ],
         )
         columns = [
-            ("approved", "Aprobadas", 105),
-            ("vacant", "Vacantes", 100),
+            ("approved", "Aprobadas", 108),
+            ("vacant", "Vacantes", 95),
             ("temp", "Temporales", 110),
-            ("distribute", "Vacantes a distribuir", 200),
-            ("salary", "Salario", 110),
-            ("months", "Meses", 90),
-            ("unexecuted", "Monto inejecutado", 180),
+            ("distribute", "A distribuir", 115),
+            ("salary", "Salario", 90),
+            ("months", "Meses", 70),
+            ("unexecuted", "Monto inejecutado", 170),
+            ("pct", "% del total", 100),
+            ("amount", "Monto a pagar", 140),
         ]
         # the totals row is packed first, at the bottom, so that it stays visible when the table scrolls
         self.totals = make_tree(
@@ -450,10 +459,10 @@ class StructureTab(ttk.Frame):
         )
         self.totals.master.pack_forget()
         self.totals.master.pack(side="bottom", fill="x")
-        self.totals.column("#0", width=300)
+        self.totals.column("#0", width=250)
         self.tree = make_tree(self, columns, expand=True, show="tree headings")
         self.tree.heading("#0", text="Área / cargo")
-        self.tree.column("#0", width=300)
+        self.tree.column("#0", width=250)
         self.tree.bind("<Double-1>", lambda _e: self.edit_position())
 
     def refresh(self) -> None:
@@ -461,15 +470,20 @@ class StructureTab(ttk.Frame):
         first_fill = not self.tree.get_children()
         self.tree.delete(*self.tree.get_children())
         project = self.app.ctl.project
+        result = self.app.ctl.calculation()
+        shares = {a.area.id: a for a in result.areas}
         for area in project.areas:
             iid = f"a{area.id}"
             members = [p for p in project.positions if p.area_id == area.id]
+            share = shares.get(area.id)
             self.tree.insert(
                 "",
                 "end",
                 iid=iid,
                 text=area.name,
-                values=totals_values(members) if members else (),
+                values=(totals_values(members) + share_values(share.pct, share.amount))
+                if members and share
+                else (),
                 tags=("area",),
                 open=first_fill or iid in open_areas,
             )
@@ -487,11 +501,21 @@ class StructureTab(ttk.Frame):
                     money_text(p.salary),
                     p.months_unexecuted,
                     money_text(p.unexecuted),
+                    "",
+                    "",
                 ),
             )
         stripe(self.tree)
         self.totals.delete(*self.totals.get_children())
-        self.totals.insert("", "end", text="TOTAL", values=totals_values(project.positions), tags=("total",))
+        pct = sum((a.pct for a in result.areas), Decimal(0))
+        amount = sum((a.amount for a in result.areas), Decimal(0))
+        self.totals.insert(
+            "",
+            "end",
+            text="TOTAL",
+            values=totals_values(project.positions) + share_values(pct, amount),
+            tags=("total",),
+        )
 
     def _selected(self) -> tuple[str, int] | None:
         selection = self.tree.selection()
@@ -720,18 +744,19 @@ class WorkersTab(ttk.Frame):
         right_combo.pack(side="left", padx=6)
         right_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
         columns = [
-            ("ci", "Carné de identidad", 180),
-            ("position", "Cargo", 130),
+            ("ci", "Carné de identidad", 170),
+            ("position", "Cargo", 100),
             ("group", "Grupo", 70),
             ("years", "Antigüedad", 110),
             ("days", "Días", 55),
             ("contribution", "Contrib.", 85),
             ("eligible", "Derecho a cobro", 150),
             ("coef", "Coeficiente", 115),
+            ("amount", "Monto a cobrar", 140),
         ]
         self.tree = make_tree(self, columns, show="tree headings")
         self.tree.heading("#0", text="Área / trabajador")
-        self.tree.column("#0", width=330)
+        self.tree.column("#0", width=250)
         self.tree.bind("<Double-1>", self._on_double_click)
         self.count = ttk.Label(self, text="", style="Hint.TLabel")
         self.count.pack(anchor="w", pady=(6, 0))
@@ -750,8 +775,9 @@ class WorkersTab(ttk.Frame):
         text = self.search.get().strip().lower()
         wanted = self.area_filter.get()
         result = ctl.calculation()
-        coefficients = {r.worker.id: r.coefficient for r in result.workers}
-        sums = coefficient_sums(result)
+        results = {r.worker.id: r for r in result.workers}
+        coefficient_by_area = coefficient_sums(result)
+        amount_by_area = amount_sums(result)
         right = self.right_filter.get()
         open_areas = {iid for iid in self.tree.get_children() if self.tree.item(iid, "open")}
         self.tree.delete(*self.tree.get_children())
@@ -775,12 +801,14 @@ class WorkersTab(ttk.Frame):
                 "end",
                 iid=iid,
                 text=f"{area_name}  ({len(belongs)})",
-                values=("",) * 7 + (f"{sums.get(area_id, 0):.2f}",),
+                values=("",) * 7
+                + (f"{coefficient_by_area.get(area_id, 0):.2f}", money_text(amount_by_area.get(area_id, 0))),
                 tags=("area",),
                 open=iid in open_areas or bool(text),
             )
             for w in members:
                 shown += 1
+                worker_result = results.get(w.id)
                 self.tree.insert(
                     iid,
                     "end",
@@ -794,7 +822,8 @@ class WorkersTab(ttk.Frame):
                         w.days_worked,
                         w.contribution,
                         "Sí" if w.eligible else "No",
-                        f"{coefficients.get(w.id, 0):.2f}",
+                        f"{worker_result.coefficient:.2f}" if worker_result else "0.00",
+                        money_text(worker_result.amount) if worker_result else money_text(0),
                     ),
                     tags=() if w.eligible else ("zero",),
                 )
@@ -964,66 +993,82 @@ class ResultsTab(ttk.Frame):
         )
         self.summary = ttk.Label(bar, text="", style="Big.TLabel")
         self.summary.pack(side="left", padx=20)
+        # only the totals live here: the detail of each area and worker is in steps 2 and 3
+        ttk.Label(self, text="Totales de áreas y cargos (Paso 2)", style="Big.TLabel").pack(anchor="w")
         area_columns = [
-            ("name", "Área", 330),
-            ("unexecuted", "Monto inejecutado", 160),
-            ("pct", "% del total", 100),
-            ("amount", "Monto a pagar", 160),
+            ("approved", "Aprobadas", 110),
+            ("vacant", "Vacantes", 110),
+            ("temp", "Temporales", 110),
+            ("distribute", "A distribuir", 130),
+            ("unexecuted", "Monto inejecutado", 170),
+            ("pct", "% del total", 110),
+            ("amount", "Monto a pagar", 170),
         ]
-        self.areas = make_tree(
-            self, area_columns, expand=False, show="headings", height=4, style="Compact.Treeview"
+        self.area_totals = make_tree(
+            self,
+            area_columns,
+            expand=False,
+            scroll=False,
+            show="headings",
+            height=1,
+            style="Compact.Treeview",
         )
+        ttk.Label(self, text="Totales de trabajadores (Paso 3)", style="Big.TLabel").pack(anchor="w")
         worker_columns = [
-            ("name", "Trabajador", 280),
-            ("area", "Área", 240),
-            ("coef", "Coeficiente", 110),
-            ("amount", "Monto a cobrar", 160),
+            ("workers", "Trabajadores", 130),
+            ("entitled", "Con derecho a cobro", 190),
+            ("paid", "Cobran", 110),
+            ("coef", "Suma de coeficientes", 190),
+            ("amount", "Monto a cobrar", 170),
         ]
-        self.workers = make_tree(self, worker_columns, show="headings", height=6, style="Compact.Treeview")
+        self.worker_totals = make_tree(
+            self,
+            worker_columns,
+            expand=False,
+            scroll=False,
+            show="headings",
+            height=1,
+            style="Compact.Treeview",
+        )
         box = ttk.Frame(self)
-        box.pack(fill="x", pady=(8, 0))
+        box.pack(fill="both", expand=True, pady=(4, 0))
         self.issues = tk.Text(box, height=3, wrap="word", state="disabled", background="#fff8e1")
         scroll = ttk.Scrollbar(box, orient="vertical", command=self.issues.yview)
         self.issues.configure(yscrollcommand=scroll.set)
-        self.issues.pack(side="left", fill="x", expand=True)
+        self.issues.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
     def refresh(self) -> None:
         ctl = self.app.ctl
         result = ctl.calculation()
-        names = {a.area.id: a.area.name for a in result.areas}
-        self.areas.delete(*self.areas.get_children())
-        for a in result.areas:
-            self.areas.insert(
-                "",
-                "end",
-                values=(a.area.name, money_text(a.unexecuted), f"{a.pct:.2f}", money_text(a.amount)),
-            )
-        stripe(self.areas)
-        self.workers.delete(*self.workers.get_children())
-        for r in result.workers:
-            self.workers.insert(
-                "",
-                "end",
-                values=(
-                    r.worker.full_name,
-                    names.get(r.worker.area_id, ""),
-                    f"{r.coefficient:.2f}",
-                    money_text(r.amount),
-                ),
-                tags=("zero",) if r.amount == 0 else (),
-            )
-        stripe(self.workers)
+        positions = ctl.project.positions
+        t = structure_totals(positions)
+        pct = sum((a.pct for a in result.areas), Decimal(0))
+        amount = sum((a.amount for a in result.areas), Decimal(0))
+        self.area_totals.delete(*self.area_totals.get_children())
+        self.area_totals.insert(
+            "",
+            "end",
+            values=(t.approved, t.vacant, t.temp_vacant, t.to_distribute, money_text(t.unexecuted))
+            + share_values(pct, amount),
+            tags=("total",),
+        )
+        w = worker_totals(result)
+        self.worker_totals.delete(*self.worker_totals.get_children())
+        self.worker_totals.insert(
+            "",
+            "end",
+            values=(w.workers, w.entitled, w.paid, f"{w.coefficient:.2f}", money_text(w.amount)),
+            tags=("total",),
+        )
         total = ctl.project.settings.total_amount
         balanced = total > 0 and result.distributed == total
-        paid = sum(1 for r in result.workers if r.amount > 0)
         if total <= 0:
             verdict = "     ⚠ Falta el monto real a distribuir (Paso 1)"
         else:
             verdict = "     ✓ Cuadra" if balanced else "     ⚠ No cuadra"
         self.summary.configure(
-            text=f"A distribuir: {money_text(total)}     Repartido: {money_text(result.distributed)}"
-            f"     Cobran: {paid} de {len(result.workers)}" + verdict,
+            text=f"A distribuir: {money_text(total)}" + verdict,
             foreground=COLOR_OK if balanced else COLOR_WARN,
         )
         self.issues.configure(state="normal")

@@ -36,12 +36,15 @@ Los pesos (25/40/20/15) y las escalas por defecto siguen el documento «Rafelito
 2. **Áreas y cargos**: crea las áreas y sus cargos, o impórtalos desde Excel/CSV (ver «Importar» abajo). En cada
    cargo indica plazas aprobadas, vacantes, temporalmente vacantes, vacantes a distribuir, salario y meses.
    La tabla muestra el subtotal de cada área y, abajo, una fila **TOTAL** con la suma de todas las columnas
-   (menos los meses).
+   (menos los meses). Cada área también muestra su **% del total** y el **monto a pagar**.
 3. **Trabajadores**: agrega, edita o elimina trabajadores, o impórtalos desde Excel/CSV. La lista está agrupada por
-   área y cada área muestra la **suma de los coeficientes** de sus trabajadores (ábrela para ver a cada uno).
+   área y cada área muestra la **suma de los coeficientes** y el **monto a cobrar** de sus trabajadores (ábrela
+   para ver el coeficiente y el monto de cada uno).
    Por defecto entran **sin derecho a cobro**: el derecho es solo para quienes asumen las tareas de una plaza
    vacante. Márcalo con «Dar derecho a cobro» (puedes seleccionar varios a la vez) o quítalo con «Quitar derecho a cobro».
-4. **Resultados**: revisa los montos y las observaciones. Pulsa **Exportar a Excel** para generar el informe
+4. **Resultados**: dos tablas de totales (áreas y cargos; trabajadores: cuántos hay, cuántos cobran, suma de
+   coeficientes y monto repartido), el aviso de si cuadra y las observaciones. El detalle por área y por trabajador
+   está en los pasos 2 y 3. Pulsa **Exportar a Excel** para generar el informe
    (montos por área, coeficientes por trabajador, pre-nómina y parámetros usados), listo para imprimir.
    **Diagnóstico (Word)…** genera el documento para firmar: plantilla aprobada y vacante, el porcentaje que
    representan las vacantes, el listado de vacantes y vacantes temporales, el monto real y los trabajadores

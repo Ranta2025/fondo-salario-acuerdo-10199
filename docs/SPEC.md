@@ -82,6 +82,8 @@ Number format `#,##0.00`. Bold headers, borders, column widths set, no merged-ce
 ## UI (tkinter/ttk, Spanish)
 Tabs: Parametros | Areas y cargos | Trabajadores | Resultados. Add/edit/delete dialogs; search + area filter in workers;
 Resultados recalculates live and shows warnings in red/amber; buttons "Exportar a Excel", "Importar trabajadores".
+Per-area results (% of total, amount to pay) live in «Áreas y cargos» and per-worker results (coefficient, amount to
+collect) in «Trabajadores»; «Resultados» only shows one totals table for each of the two plus the balance verdict.
 Confirm before deleting. Deleting an area with workers is blocked or reassigns (ask). Keyboard-friendly, works at 1366x768.
 Packaging notes (PyInstaller one-file for Windows) go in README.
 

@@ -371,11 +371,11 @@ def test_workers_are_grouped_by_area_with_the_sum_of_their_coefficients(window):
     (area_row,) = tab.tree.get_children()
     result = window.ctl.calculation()
     expected = sum(r.coefficient for r in result.workers)
-    assert tab.tree.item(area_row, "values")[-1] == f"{expected:.2f}" and "(2)" in tab.tree.item(
+    assert tab.tree.item(area_row, "values")[-2] == f"{expected:.2f}" and "(2)" in tab.tree.item(
         area_row, "text"
     )
     assert coefficient_sums(result) == {area.id: expected}
-    child_values = [tab.tree.item(i, "values")[-1] for i in tab.tree.get_children(area_row)]
+    child_values = [tab.tree.item(i, "values")[-2] for i in tab.tree.get_children(area_row)]
     assert sorted(child_values) == sorted(f"{r.coefficient:.2f}" for r in result.workers)
 
 
@@ -397,8 +397,8 @@ def test_structure_table_shows_area_subtotals_and_a_total_row_without_adding_mon
     tab = window.tabs["2. Áreas y cargos"]
     (total_row,) = tab.totals.get_children()
     total = tab.totals.item(total_row, "values")
-    # approved, vacant, temp, to distribute, salary, months (blank), unexecuted
-    assert tuple(total) == ("6", "4", "1", "4", "1,700.00", "", "8,100.00")
+    # approved, vacant, temp, to distribute, salary, months (blank), unexecuted, % of total, amount to pay
+    assert tuple(total) == ("6", "4", "1", "4", "1,700.00", "", "8,100.00", "100.00", "0.00")
     assert tuple(tab.tree.item(f"a{area.id}", "values"))[:4] == ("3", "2", "1", "3")
     assert tab.totals.item(total_row, "text") == "TOTAL"
 
@@ -445,3 +445,57 @@ def test_diagnostic_save_errors_are_reported_and_cancelling_does_nothing(window,
     )
     window.export_diagnostic()
     assert errors and "No se pudo guardar" in errors[0] and shown == []
+
+
+def _balanced_project(window):
+    window.ctl.save_settings(Settings(total_amount=D("1000.00"), months_paid=3))
+    area = window.ctl.project.areas[0]
+    other = window.ctl.add_area("Eco")
+    window.ctl.add_position(Position(0, area.id, "Jefe", 2, 2, 0, D("1000"), 3))
+    window.ctl.add_position(Position(0, other.id, "Contador", 1, 1, 0, D("1000"), 3))
+    window.ctl.add_worker(Worker(0, "Ana", "1", area.id, 12, 5, 72, 4, eligible=True))
+    window.ctl.add_worker(Worker(0, "Beto", "2", other.id, 3, 1, 72, 3, eligible=True))
+    window.ctl.add_worker(Worker(0, "Caro", "3", other.id, 3, 1, 72, 3, eligible=False))
+    window.changed()
+    return window.ctl.calculation(), area, other
+
+
+def test_structure_table_shows_the_share_and_amount_of_each_area(window):
+    result, area, other = _balanced_project(window)
+    tab = window.tabs["2. Áreas y cargos"]
+    by_area = {a.area.id: a for a in result.areas}
+    for a in (area, other):
+        values = tab.tree.item(f"a{a.id}", "values")
+        assert tuple(values[-2:]) == (f"{by_area[a.id].pct:.2f}", app_module.money_text(by_area[a.id].amount))
+        (child,) = tab.tree.get_children(f"a{a.id}")
+        assert tuple(tab.tree.item(child, "values")[-2:]) == ("", "")  # positions carry no amount
+    (total_row,) = tab.totals.get_children()
+    assert tuple(tab.totals.item(total_row, "values")[-2:]) == ("100.00", "1,000.00")
+
+
+def test_workers_table_shows_the_amount_of_each_worker_and_the_total_of_each_area(window):
+    result, area, other = _balanced_project(window)
+    tab = window.tabs["3. Trabajadores"]
+    by_worker = {r.worker.id: r for r in result.workers}
+    for area_id in (area.id, other.id):
+        expected = sum(r.amount for r in result.workers if r.worker.area_id == area_id)
+        assert tab.tree.item(f"a{area_id}", "values")[-1] == app_module.money_text(expected)
+        for child in tab.tree.get_children(f"a{area_id}"):
+            assert tab.tree.item(child, "values")[-1] == app_module.money_text(by_worker[int(child)].amount)
+
+
+def test_results_tab_has_only_two_small_total_tables(window):
+    result, _area, _other = _balanced_project(window)
+    tab = window.tabs["4. Resultados"]
+    assert not hasattr(tab, "workers") and not hasattr(tab, "areas")
+    (area_row,) = tab.area_totals.get_children()
+    # approved, vacant, temp, to distribute, unexecuted, % of total, amount to pay
+    assert tuple(tab.area_totals.item(area_row, "values")) == (
+        "3", "3", "0", "3", "9,000.00", "100.00", "1,000.00",
+    )  # fmt: skip
+    (worker_row,) = tab.worker_totals.get_children()
+    coefficients = sum(r.coefficient for r in result.workers)
+    # workers, with the right to collect, collecting, sum of coefficients, amount to collect
+    assert tuple(tab.worker_totals.item(worker_row, "values")) == (
+        "3", "2", "2", f"{coefficients:.2f}", "1,000.00",
+    )  # fmt: skip
