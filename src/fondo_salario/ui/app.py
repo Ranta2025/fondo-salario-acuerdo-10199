@@ -11,6 +11,7 @@ from tkinter import font as tkfont
 
 from fondo_salario.domain.models import Position, Settings, Worker
 from fondo_salario.domain.scales import parse_roman
+from fondo_salario.domain.totals import area_totals, structure_totals, worker_totals
 from fondo_salario.export.excel_report import to_roman
 from fondo_salario.importers.table import ImportFormatError, StructurePlan, WorkersPlan
 from fondo_salario.messages import describe
@@ -22,8 +23,6 @@ from fondo_salario.ui.controller import (
     coefficient_sums,
     parse_money,
     resolve_distribute,
-    structure_totals,
-    worker_totals,
 )
 from fondo_salario.ui.forms import Field, ask_form
 
@@ -507,13 +506,12 @@ class StructureTab(ttk.Frame):
             )
         stripe(self.tree)
         self.totals.delete(*self.totals.get_children())
-        pct = sum((a.pct for a in result.areas), Decimal(0))
-        amount = sum((a.amount for a in result.areas), Decimal(0))
+        shown = area_totals(result)
         self.totals.insert(
             "",
             "end",
             text="TOTAL",
-            values=totals_values(project.positions) + share_values(pct, amount),
+            values=totals_values(project.positions) + share_values(shown.pct, shown.amount),
             tags=("total",),
         )
 
@@ -1041,16 +1039,14 @@ class ResultsTab(ttk.Frame):
     def refresh(self) -> None:
         ctl = self.app.ctl
         result = ctl.calculation()
-        positions = ctl.project.positions
-        t = structure_totals(positions)
-        pct = sum((a.pct for a in result.areas), Decimal(0))
-        amount = sum((a.amount for a in result.areas), Decimal(0))
+        a = area_totals(result)
+        t = a.structure
         self.area_totals.delete(*self.area_totals.get_children())
         self.area_totals.insert(
             "",
             "end",
             values=(t.approved, t.vacant, t.temp_vacant, t.to_distribute, money_text(t.unexecuted))
-            + share_values(pct, amount),
+            + share_values(a.pct, a.amount),
             tags=("total",),
         )
         w = worker_totals(result)

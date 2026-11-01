@@ -45,7 +45,7 @@ Los pesos (25/40/20/15) y las escalas por defecto siguen el documento «Rafelito
 4. **Resultados**: dos tablas de totales (áreas y cargos; trabajadores: cuántos hay, cuántos cobran, suma de
    coeficientes y monto repartido), el aviso de si cuadra y las observaciones. El detalle por área y por trabajador
    está en los pasos 2 y 3. Pulsa **Exportar a Excel** para generar el informe
-   (montos por área, coeficientes por trabajador, pre-nómina y parámetros usados), listo para imprimir.
+   (montos por área, coeficientes por trabajador, las dos tablas de totales de Resultados, pre-nómina y parámetros usados), listo para imprimir.
    **Diagnóstico (Word)…** genera el documento para firmar: plantilla aprobada y vacante, el porcentaje que
    representan las vacantes, el listado de vacantes y vacantes temporales, el monto real y los trabajadores
    beneficiados por área, con los espacios de firma del Departamento Administrativo y de los grupos de Recursos

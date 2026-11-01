@@ -1,4 +1,4 @@
-"""Excel evidence report: per-area amounts, per-worker coefficients, pre-payroll and parameters."""
+"""Excel evidence report: per-area amounts, per-worker coefficients, totals, pre-payroll and parameters."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from fondo_salario.domain.calculation import CalculationResult
 from fondo_salario.domain.models import Settings
 from fondo_salario.domain.scales import to_roman
+from fondo_salario.domain.totals import area_totals, worker_totals
 from fondo_salario.importers.table import add_data_sheets
 from fondo_salario.messages import describe
 
@@ -198,6 +199,49 @@ def _worker_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> Non
     _finish(ws, [30, 30, 16, 26, 12, 11, 9, 10, 12, 11, 11, 11, 12, 14, 16])
 
 
+def _totals_sheet(wb: Workbook, result: CalculationResult, subtitle: str) -> None:
+    """The two totals tables of the «Resultados» screen, from the same figures."""
+    ws = wb.create_sheet("Totales")
+    _title(ws, "Totales", subtitle, 7)
+    areas, workers = area_totals(result), worker_totals(result)
+    s = areas.structure
+    ws.cell(row=4, column=1, value="Totales de áreas y cargos").font = BOLD
+    _header(
+        ws,
+        5,
+        [
+            "Aprobadas",
+            "Vacantes",
+            "Temporales",
+            "Vacantes a distribuir",
+            "Monto inejecutado",
+            "% del total",
+            "Monto a pagar",
+        ],
+    )
+    _row(
+        ws,
+        6,
+        [s.approved, s.vacant, s.temp_vacant, s.to_distribute, _money(s.unexecuted)]
+        + [float(areas.pct), _money(areas.amount)],
+        bold=True,
+        money_cols=(4, 5, 6),
+    )
+    ws.cell(row=8, column=1, value="Totales de trabajadores").font = BOLD
+    _header(
+        ws, 9, ["Trabajadores", "Con derecho a cobro", "Cobran", "Suma de coeficientes", "Monto a cobrar"]
+    )
+    _row(
+        ws,
+        10,
+        [workers.workers, workers.entitled, workers.paid, float(workers.coefficient), _money(workers.amount)],
+        bold=True,
+        money_cols=(3, 4),
+    )
+    ws.print_title_rows = None
+    _finish(ws, [16, 20, 14, 22, 20, 14, 18])
+
+
 def _payroll_sheet(wb: Workbook, settings: Settings, result: CalculationResult, subtitle: str) -> None:
     ws = wb.create_sheet("Pre-nómina")
     _title(ws, "Pre-nómina", subtitle, 6)
@@ -273,6 +317,7 @@ def export_report(
     wb = Workbook()
     _area_sheet(wb, result, subtitle)
     _worker_sheet(wb, result, subtitle)
+    _totals_sheet(wb, result, subtitle)
     _payroll_sheet(wb, settings, result, subtitle)
     _parameters_sheet(wb, settings, result, generated_on)
     # the same two tables in the import structure, so the report can be loaded into another project

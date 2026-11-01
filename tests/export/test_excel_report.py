@@ -39,6 +39,7 @@ def test_sheets_exist(tmp_path):
     assert wb.sheetnames == [
         "Hoja 1 - Montos por área",
         "Hoja 2 - Coeficientes",
+        "Totales",
         "Pre-nómina",
         "Parámetros",
         "Trabajadores",
@@ -108,3 +109,31 @@ def test_reports_show_who_has_the_right_to_collect(tmp_path):
     assert next(r for r in pre if r[0] == "No.")[5] == "Derecho a cobro"
     assert next(r for r in pre if r[1] == "Eli Cinco Prueba")[5] == "No"
     assert next(r for r in pre if r[1] == "Ana Uno Prueba")[5] == "Sí"
+
+
+def test_totals_sheet_has_the_two_tables_of_the_results_tab(tmp_path):
+    from fondo_salario.domain.totals import area_totals, worker_totals
+
+    wb, result = build(tmp_path)
+    rows = {r[0]: r for r in wb["Totales"].iter_rows(values_only=True) if r[0]}
+    areas, workers = area_totals(result), worker_totals(result)
+    s = areas.structure
+    assert rows["Totales de áreas y cargos"][1:] == (None,) * 6
+    assert rows["Aprobadas"][:7] == (
+        "Aprobadas", "Vacantes", "Temporales", "Vacantes a distribuir",
+        "Monto inejecutado", "% del total", "Monto a pagar",
+    )  # fmt: skip
+    values = next(r for r in wb["Totales"].iter_rows(min_row=6, max_row=6, values_only=True))
+    assert values[:7] == (
+        s.approved, s.vacant, s.temp_vacant, s.to_distribute,
+        float(s.unexecuted), float(areas.pct), float(areas.amount),
+    )  # fmt: skip
+    assert float(areas.amount) == 1000.0 and float(areas.pct) == 100.0
+    assert rows["Trabajadores"][:5] == (
+        "Trabajadores", "Con derecho a cobro", "Cobran", "Suma de coeficientes", "Monto a cobrar",
+    )  # fmt: skip
+    values = next(r for r in wb["Totales"].iter_rows(min_row=10, max_row=10, values_only=True))
+    assert values[:5] == (
+        workers.workers, workers.entitled, workers.paid, float(workers.coefficient), float(workers.amount),
+    )  # fmt: skip
+    assert values[4] == 1000.0
