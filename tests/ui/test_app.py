@@ -499,3 +499,13 @@ def test_results_tab_has_only_two_small_total_tables(window):
     assert tuple(tab.worker_totals.item(worker_row, "values")) == (
         "3", "2", "2", f"{coefficients:.2f}", "1,000.00",
     )  # fmt: skip
+
+
+def test_results_summary_line_keeps_its_text_and_colour(window):
+    _balanced_project(window)
+    summary = window.tabs["4. Resultados"].summary
+    assert (
+        summary.cget("text")
+        == "A distribuir: 1,000.00     Repartido: 1,000.00     Cobran: 2 de 3     ✓ Cuadra"
+    )
+    assert str(summary.cget("foreground")) == app_module.COLOR_OK

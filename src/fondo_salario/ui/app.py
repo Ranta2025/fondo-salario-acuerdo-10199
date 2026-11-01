@@ -1068,7 +1068,8 @@ class ResultsTab(ttk.Frame):
         else:
             verdict = "     ✓ Cuadra" if balanced else "     ⚠ No cuadra"
         self.summary.configure(
-            text=f"A distribuir: {money_text(total)}" + verdict,
+            text=f"A distribuir: {money_text(total)}     Repartido: {money_text(result.distributed)}"
+            f"     Cobran: {w.paid} de {w.workers}" + verdict,
             foreground=COLOR_OK if balanced else COLOR_WARN,
         )
         self.issues.configure(state="normal")
