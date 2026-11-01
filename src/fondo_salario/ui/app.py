@@ -308,7 +308,7 @@ class ParametersTab(ttk.Frame):
         self.app = app
         self.edited = False
         self._loading = False
-        ttk.Label(self, text="Paso 1: Parámetros del pago", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(self, text="Parámetros del pago", style="Title.TLabel").pack(anchor="w")
         hint(
             self,
             "Escriba el monto real que se va a repartir y los meses que se pagan. Los pesos y las escalas "
@@ -421,7 +421,7 @@ class StructureTab(ttk.Frame):
     def __init__(self, app: App):
         super().__init__(app.notebook, padding=20)
         self.app = app
-        ttk.Label(self, text="Paso 2: Áreas y cargos", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(self, text="Áreas y cargos", style="Title.TLabel").pack(anchor="w")
         hint(
             self,
             "Cree las áreas y, dentro de cada una, sus cargos. En cada cargo indique cuántas plazas están "
@@ -699,7 +699,7 @@ class WorkersTab(ttk.Frame):
     def __init__(self, app: App):
         super().__init__(app.notebook, padding=20)
         self.app = app
-        ttk.Label(self, text="Paso 3: Trabajadores", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(self, text="Trabajadores", style="Title.TLabel").pack(anchor="w")
         hint(
             self,
             "Agregue a cada trabajador con sus datos. El derecho a cobro es solo para quienes asumen las "
@@ -976,7 +976,7 @@ class ResultsTab(ttk.Frame):
     def __init__(self, app: App):
         super().__init__(app.notebook, padding=20)
         self.app = app
-        ttk.Label(self, text="Paso 4: Resultados", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(self, text="Resultados", style="Title.TLabel").pack(anchor="w")
         hint(
             self,
             "Revise los montos. Si todo cuadra, exporte el informe: incluye los cálculos y la pre-nómina.",
@@ -992,7 +992,7 @@ class ResultsTab(ttk.Frame):
         self.summary = ttk.Label(bar, text="", style="Big.TLabel")
         self.summary.pack(side="left", padx=20)
         # only the totals live here: the detail of each area and worker is in steps 2 and 3
-        ttk.Label(self, text="Totales de áreas y cargos (Paso 2)", style="Big.TLabel").pack(anchor="w")
+        ttk.Label(self, text="Totales de áreas y cargos", style="Big.TLabel").pack(anchor="w")
         area_columns = [
             ("approved", "Aprobadas", 110),
             ("vacant", "Vacantes", 110),
@@ -1011,7 +1011,7 @@ class ResultsTab(ttk.Frame):
             height=1,
             style="Compact.Treeview",
         )
-        ttk.Label(self, text="Totales de trabajadores (Paso 3)", style="Big.TLabel").pack(anchor="w")
+        ttk.Label(self, text="Totales de trabajadores", style="Big.TLabel").pack(anchor="w")
         worker_columns = [
             ("workers", "Trabajadores", 130),
             ("entitled", "Con derecho a cobro", 190),
